@@ -1,0 +1,24 @@
+# Node
+node_modules/
+npm-debug.log*
+package-lock.json
+
+# Build output
+dist/
+coverage/
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+
+# Local env
+.env
+
+# Reference (do not publish or commit)
+reference/
+ui-test/
+doc/
