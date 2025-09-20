@@ -92,6 +92,49 @@ describe('M1: app + ratings', () => {
     }
   });
 
+  it('app: falls back to web screenshots when API returns none', async () => {
+    const lookupBody = JSON.stringify({
+      results: [
+        {
+          trackId: 553834731,
+          bundleId: 'com.openai.chat',
+          trackName: 'ChatGPT',
+          trackViewUrl: 'https://apps.apple.com/us/app/chatgpt/id6448311069',
+          description: 'desc',
+          artworkUrl512: 'https://example/icon.png',
+          screenshotUrls: [],
+          ipadScreenshotUrls: [],
+          appletvScreenshotUrls: [],
+          price: 0,
+          currency: 'USD',
+          artistId: 123,
+          artistName: 'OpenAI',
+        },
+      ],
+    });
+
+    const fallbackHtml = `
+      <html><body>
+      https://is1-ssl.mzstatic.com/image/thumb/Purple116/v4/aa/bb/cc/iphone-1/1242x2688bb.jpg
+      https://is2-ssl.mzstatic.com/image/thumb/Purple126/v4/dd/ee/ff/ipad-1/2048x2732bb.jpg
+      </body></html>
+    `;
+
+    __setFetchForTests(
+      mockFetch((url) => {
+        if (url.startsWith('https://itunes.apple.com/lookup')) return { body: lookupBody };
+        if (url.startsWith('https://apps.apple.com')) return { body: fallbackHtml };
+        return { status: 404, body: '' };
+      }),
+    );
+
+    const result = await app({ id: '553834731' });
+    expect(result.screenshots).to.have.length(1);
+    expect(result.screenshots[0]).to.include('1242x2688');
+    expect(result.ipadScreenshots).to.have.length(1);
+    expect(result.ipadScreenshots[0]).to.include('2048x2732');
+  });
+
   it('ratings: parses totals and histogram', async () => {
     const html = `
       <div class="rating-count">42 Ratings</div>
@@ -112,4 +155,3 @@ describe('M1: app + ratings', () => {
     expect(res.histogram).to.deep.equal({ '5': 1, '4': 2, '3': 3, '2': 4, '1': 5 });
   });
 });
-

@@ -1,5 +1,6 @@
 import { lookup } from '../common';
 import type { App } from '../types';
+import { getScreenshotsWithFallback } from '../utils/screenshotFallback';
 import { ratings as ratingsMethod } from './ratings';
 
 export interface AppOptions {
@@ -25,7 +26,19 @@ export async function app(opts: AppOptions): Promise<App> {
     throw new NotFoundError('App not found (404)');
   }
 
-  const result = results[0];
+  let result = results[0];
+
+  const missingIphoneScreenshots = !Array.isArray(result.screenshots) || result.screenshots.length === 0;
+  const missingIpadScreenshots = !Array.isArray(result.ipadScreenshots) || result.ipadScreenshots.length === 0;
+
+  if (missingIphoneScreenshots || missingIpadScreenshots) {
+    result = await getScreenshotsWithFallback(
+      result,
+      result.id ?? idValue,
+      opts.country,
+      opts.requestOptions,
+    );
+  }
   if (opts.ratings) {
     if (!opts.id) opts.id = result.id;
     const ratings = await ratingsMethod({ id: String(opts.id), country: opts.country, requestOptions: opts.requestOptions });
