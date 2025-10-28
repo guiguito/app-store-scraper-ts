@@ -1,4 +1,5 @@
 import { storeId, lookup } from '../common';
+import { withCountryRequestOptions } from '../utils/request-options';
 
 const BASE_URL = 'https://search.itunes.apple.com/WebObjects/MZStore.woa/wa/search?clientApplication=Software&media=software&term=';
 
@@ -27,14 +28,15 @@ export async function search(opts: SearchOptions) {
   const lang = opts.lang || 'en-us';
 
   const { defaultClient } = await import('../http/client');
+  const requestOptions = withCountryRequestOptions(opts.requestOptions, opts.country);
   const json = await defaultClient.request(
     url,
     { 'X-Apple-Store-Front': `${storeFront},24 t:native`, 'Accept-Language': lang },
-    opts.requestOptions,
+    requestOptions,
   );
   const parsed = JSON.parse(json);
   const results: Array<string | number> = (parsed?.bubbles?.[0]?.results ?? []).map((r: any) => r.id);
   const windowed: Array<string | number> = paginate(results, opts.num || 50, opts.page || 1);
   if (opts.idsOnly) return windowed;
-  return lookup(windowed, 'id', opts.country, opts.lang, opts.requestOptions, opts.throttle);
+  return lookup(windowed, 'id', opts.country, opts.lang, requestOptions, opts.throttle);
 }

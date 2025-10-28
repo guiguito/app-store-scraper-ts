@@ -1,5 +1,6 @@
 import { storeId } from '../common';
 import { parseXml } from '../utils/xml';
+import { withCountryRequestOptions } from '../utils/request-options';
 
 const BASE_URL = 'https://search.itunes.apple.com/WebObjects/MZSearchHints.woa/wa/hints?clientApplication=Software&term=';
 
@@ -16,7 +17,7 @@ export async function suggest(opts: SuggestOptions) {
   const xml = await defaultClient.request(
     url,
     { 'X-Apple-Store-Front': `${storeId(opts.country)},29` },
-    opts.requestOptions,
+    withCountryRequestOptions(opts.requestOptions, opts.country),
   );
   const parsed: any = parseXml(xml);
   // Path: plist -> dict[0] -> array[0] -> dict[] -> each dict has "string" entries, first being term

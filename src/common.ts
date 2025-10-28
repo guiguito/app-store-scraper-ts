@@ -1,6 +1,7 @@
 import { defaultClient } from './http/client';
 import { markets } from './constants';
 import type { App } from './types';
+import { withCountryRequestOptions } from './utils/request-options';
 
 const LOOKUP_URL = 'https://itunes.apple.com/lookup';
 
@@ -53,7 +54,11 @@ export async function lookup(
   const langParam = lang ? `&lang=${encodeURIComponent(lang)}` : '';
   const joinedIds = ids.join(',');
   const url = `${LOOKUP_URL}?${idField}=${joinedIds}&country=${country}&entity=software${langParam}`;
-  const body = await defaultClient.request(url, {}, requestOptions);
+  const body = await defaultClient.request(
+    url,
+    {},
+    withCountryRequestOptions(requestOptions, country),
+  );
   const parsed = JSON.parse(body);
   const softwareOnly = (parsed.results || []).filter(
     (app: any) => typeof app.wrapperType === 'undefined' || app.wrapperType === 'software',
@@ -67,4 +72,3 @@ export function storeId(countryCode?: string): string {
   const code = countryCode.toUpperCase() as keyof typeof markets;
   return String((markets as any)[code] ?? defaultStore);
 }
-

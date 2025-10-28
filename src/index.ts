@@ -1,4 +1,12 @@
 export * as constants from './constants';
+export {
+  configureDefaultProxy,
+  configureCountryProxies,
+  getCountryProxyMap,
+  getDefaultProxyConfig,
+  setProxyUsageListener,
+} from './http/client';
+export type { ProxyOptions, ProxyUsageEvent } from './http/client';
 export { app } from './modules/app';
 export { ratings } from './modules/ratings';
 export { list } from './modules/list';

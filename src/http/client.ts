@@ -1,9 +1,56 @@
+export interface ProxyOptions {
+  url: string;
+  rejectUnauthorized?: boolean;
+}
+
+type ProxyInput = ProxyOptions | string;
+
+export interface ProxyUsageEvent {
+  targetUrl: string;
+  viaProxy: boolean;
+  proxy?: {
+    url: string;
+    displayUrl: string;
+    protocol: 'http' | 'https';
+    host: string;
+    port: string;
+    rejectUnauthorized?: boolean;
+    hasCredentials: boolean;
+  };
+  reason?: string;
+  error?: unknown;
+  country?: string;
+}
+
+type ProxyUsageListener = (event: ProxyUsageEvent) => void;
+
+let proxyUsageListener: ProxyUsageListener | undefined;
+
+type ProxyAgentFactoryResult = { dispatcher?: any; reason?: string; error?: unknown };
+type ProxyAgentFactory = (
+  config: NormalizedProxyConfig,
+  options: Record<string, any>,
+) => Promise<ProxyAgentFactoryResult> | ProxyAgentFactoryResult;
+
+let proxyAgentFactory: ProxyAgentFactory | undefined;
+
+export function setProxyUsageListener(listener?: ProxyUsageListener) {
+  proxyUsageListener = listener;
+}
+
+export function __setProxyAgentFactoryForTests(factory?: ProxyAgentFactory) {
+  proxyAgentFactory = factory;
+}
+
 export interface RequestOptions {
   method?: string;
   headers?: Record<string, string>;
   body?: any;
   // custom timeout in ms
   timeoutMs?: number;
+  proxy?: ProxyInput | false;
+  rejectUnauthorized?: boolean;
+  country?: string;
 }
 
 type FetchLike = typeof fetch;
@@ -48,6 +95,84 @@ class RateLimiter {
   }
 }
 
+interface NormalizedProxyConfig {
+  url: string;
+  displayUrl: string;
+  protocol: 'http' | 'https';
+  host: string;
+  port: string;
+  hasCredentials: boolean;
+  rejectUnauthorized?: boolean;
+}
+
+interface ProxyDispatcherResult {
+  dispatcher?: any;
+  error?: unknown;
+  reason?: string;
+}
+
+function toDisplayUrl(parsed: URL, hasCredentials: boolean): string {
+  const hostPort = parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname;
+  if (!hasCredentials) return `${parsed.protocol}//${hostPort}`;
+  return `${parsed.protocol}//***@${hostPort}`;
+}
+
+function normalizeProxy(value?: ProxyInput | false | null, fallbackReject?: boolean): NormalizedProxyConfig | undefined {
+  if (value === undefined || value === null || value === false) return undefined;
+  const proxy = typeof value === 'string' ? { url: value } : value;
+  const rawUrl = proxy.url?.trim();
+  if (!rawUrl) return undefined;
+  const ensured = rawUrl.includes('://') ? rawUrl : `http://${rawUrl}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(ensured);
+  } catch {
+    return undefined;
+  }
+  const protocol = parsed.protocol.replace(':', '').toLowerCase();
+  if (protocol !== 'http' && protocol !== 'https') return undefined;
+  const hasCredentials = parsed.username !== '' || parsed.password !== '';
+  const port = parsed.port || (protocol === 'https' ? '443' : '80');
+  const rejectUnauthorized = proxy.rejectUnauthorized ?? fallbackReject;
+  return {
+    url: ensured,
+    displayUrl: toDisplayUrl(parsed, hasCredentials),
+    protocol: protocol as 'http' | 'https',
+    host: parsed.hostname,
+    port,
+    hasCredentials,
+    rejectUnauthorized,
+  };
+}
+
+function buildProxyKey(config: NormalizedProxyConfig): string {
+  const reject = typeof config.rejectUnauthorized === 'undefined' ? 'default' : config.rejectUnauthorized ? 'true' : 'false';
+  return `${config.url}|${reject}`;
+}
+
+async function createProxyDispatcher(config: NormalizedProxyConfig): Promise<ProxyDispatcherResult> {
+  const options: any = { uri: config.url };
+  if (typeof config.rejectUnauthorized !== 'undefined') {
+    options.requestTls = { ...(options.requestTls || {}), rejectUnauthorized: config.rejectUnauthorized };
+    if (config.protocol === 'https') {
+      options.proxyTls = { ...(options.proxyTls || {}), rejectUnauthorized: config.rejectUnauthorized };
+    }
+  }
+  try {
+    if (proxyAgentFactory) {
+      return await proxyAgentFactory(config, options);
+    }
+    const undici = await import('undici');
+    const ProxyAgent = (undici as any).ProxyAgent;
+    if (!ProxyAgent) {
+      return { reason: 'ProxyAgent unavailable' };
+    }
+    return { dispatcher: new ProxyAgent(options) };
+  } catch (error: any) {
+    return { error, reason: error?.message };
+  }
+}
+
 export interface RetryOptions {
   retries?: number; // total attempts including the first
   minDelayMs?: number;
@@ -59,13 +184,19 @@ export interface ClientOptions {
   retry?: RetryOptions;
   fetchImpl?: FetchLike;
   proxyUrl?: string; // e.g., http://user:pass@host:port
+  proxy?: ProxyInput | false;
+  rejectUnauthorized?: boolean;
+  countryProxies?: Record<string, ProxyInput | false | null | undefined>;
+  countryProxyDefaultRejectUnauthorized?: boolean;
 }
 
 export class HttpClient {
   private limiter: RateLimiter;
   private retry: Required<RetryOptions>;
   private fetchImpl: FetchLike;
-  private proxyUrl?: string;
+  private proxyConfig?: NormalizedProxyConfig;
+  private proxyDispatchers: Map<string, any> = new Map();
+  private countryProxyMap?: Map<string, NormalizedProxyConfig>;
 
   constructor(opts: ClientOptions = {}) {
     this.limiter = new RateLimiter(opts.limiterRps ?? 0, 1000);
@@ -75,11 +206,120 @@ export class HttpClient {
       maxDelayMs: opts.retry?.maxDelayMs ?? 2500,
     };
     this.fetchImpl = opts.fetchImpl ?? fetch;
-    this.proxyUrl = opts.proxyUrl || process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+    if (opts.proxy === false) {
+      this.proxyConfig = undefined;
+    } else {
+      const configured = normalizeProxy(opts.proxy ?? opts.proxyUrl, opts.rejectUnauthorized);
+      if (configured) this.proxyConfig = configured;
+      else {
+        const envProxy = process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY;
+        this.proxyConfig = normalizeProxy(envProxy, opts.rejectUnauthorized);
+      }
+    }
+    if (opts.countryProxies) {
+      this.setCountryProxies(opts.countryProxies, opts.countryProxyDefaultRejectUnauthorized);
+    }
+  }
+
+  private resolveProxyConfig(requestOptions: RequestOptions): NormalizedProxyConfig | undefined {
+    if (requestOptions.proxy === false) return undefined;
+    const override = normalizeProxy(requestOptions.proxy, requestOptions.rejectUnauthorized);
+    if (override) return override;
+    if (this.countryProxyMap && this.countryProxyMap.size > 0) {
+      const country = typeof requestOptions.country === 'string' ? requestOptions.country.trim().toUpperCase() : undefined;
+      if (country) {
+        const entry = this.countryProxyMap.get(country);
+        if (entry) {
+          if (typeof requestOptions.rejectUnauthorized !== 'undefined') {
+            return { ...entry, rejectUnauthorized: requestOptions.rejectUnauthorized };
+          }
+          return { ...entry };
+        }
+      }
+      return undefined;
+    }
+    if (!this.proxyConfig) return undefined;
+    if (typeof requestOptions.rejectUnauthorized !== 'undefined') {
+      return { ...this.proxyConfig, rejectUnauthorized: requestOptions.rejectUnauthorized };
+    }
+    return { ...this.proxyConfig };
+  }
+
+  private async getProxyDispatcher(config: NormalizedProxyConfig): Promise<ProxyDispatcherResult & { config: NormalizedProxyConfig }> {
+    const key = buildProxyKey(config);
+    const cached = this.proxyDispatchers.get(key);
+    if (cached) {
+      return { dispatcher: cached, config };
+    }
+    const result = await createProxyDispatcher(config);
+    if (result.dispatcher) {
+      this.proxyDispatchers.set(key, result.dispatcher);
+    } else {
+      this.proxyDispatchers.delete(key);
+    }
+    return { ...result, config };
   }
 
   setFetchImpl(fetchImpl: FetchLike) {
     this.fetchImpl = fetchImpl;
+  }
+
+  setProxy(proxy: ProxyInput | false | undefined, rejectUnauthorized?: boolean) {
+    if (proxy === false) {
+      this.proxyConfig = undefined;
+      this.proxyDispatchers.clear();
+      return;
+    }
+    if (typeof proxy === 'undefined') {
+      const envProxy = process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY;
+      this.proxyConfig = normalizeProxy(envProxy, rejectUnauthorized);
+    } else {
+      this.proxyConfig = normalizeProxy(proxy, rejectUnauthorized) ?? undefined;
+      if (!this.proxyConfig && typeof proxy === 'string' && proxy.trim() === '') {
+        this.proxyConfig = undefined;
+      }
+      if (!this.proxyConfig && typeof proxy === 'object' && proxy?.url?.trim() === '') {
+        this.proxyConfig = undefined;
+      }
+    }
+    this.proxyDispatchers.clear();
+  }
+
+  setCountryProxies(
+    proxies?: Record<string, ProxyInput | false | null | undefined>,
+    defaultRejectUnauthorized?: boolean,
+  ) {
+    if (!proxies || Object.keys(proxies).length === 0) {
+      this.countryProxyMap = undefined;
+      this.proxyDispatchers.clear();
+      return;
+    }
+    const map = new Map<string, NormalizedProxyConfig>();
+    for (const [key, value] of Object.entries(proxies)) {
+      if (!key) continue;
+      if (value === false || value === null || typeof value === 'undefined') continue;
+      const config = normalizeProxy(value, defaultRejectUnauthorized);
+      if (!config) continue;
+      map.set(key.trim().toUpperCase(), config);
+    }
+    this.countryProxyMap = map.size > 0 ? map : undefined;
+    this.proxyDispatchers.clear();
+  }
+
+  getProxyConfig(): ProxyUsageEvent['proxy'] | undefined {
+    if (!this.proxyConfig) return undefined;
+    const { url, displayUrl, protocol, host, port, rejectUnauthorized, hasCredentials } = this.proxyConfig;
+    return { url, displayUrl, protocol, host, port, rejectUnauthorized, hasCredentials };
+  }
+
+  getCountryProxyMap(): Record<string, ProxyUsageEvent['proxy']> {
+    if (!this.countryProxyMap || this.countryProxyMap.size === 0) return {};
+    const out: Record<string, ProxyUsageEvent['proxy']> = {};
+    for (const [country, config] of this.countryProxyMap.entries()) {
+      const { url, displayUrl, protocol, host, port, rejectUnauthorized, hasCredentials } = config;
+      out[country] = { url, displayUrl, protocol, host, port, rejectUnauthorized, hasCredentials };
+    }
+    return out;
   }
 
   async request(url: string, headers: Record<string, string> = {}, requestOptions: RequestOptions = {}): Promise<string> {
@@ -90,15 +330,39 @@ export class HttpClient {
       const controller = new AbortController();
       const timeout = requestOptions.timeoutMs ? setTimeout(() => controller.abort(), requestOptions.timeoutMs) : undefined;
 
+      const usageEvent: ProxyUsageEvent = {
+        targetUrl: url,
+        viaProxy: false,
+        reason: 'direct',
+        country: typeof requestOptions.country === 'string'
+          ? requestOptions.country.trim().toUpperCase()
+          : undefined,
+      };
+
       try {
-        // Attach proxy dispatcher if configured and supported (undici)
         let dispatcher: any = undefined;
-        if (this.proxyUrl) {
-          try {
-            const undici = await import('undici');
-            const ProxyAgent = (undici as any).ProxyAgent;
-            if (ProxyAgent) dispatcher = new ProxyAgent(this.proxyUrl);
-          } catch {}
+        const proxyConfig = this.resolveProxyConfig(requestOptions);
+        if (proxyConfig) {
+          const result = await this.getProxyDispatcher(proxyConfig);
+          usageEvent.proxy = {
+            url: proxyConfig.url,
+            displayUrl: proxyConfig.displayUrl,
+            protocol: proxyConfig.protocol,
+            host: proxyConfig.host,
+            port: proxyConfig.port,
+            rejectUnauthorized: proxyConfig.rejectUnauthorized,
+            hasCredentials: proxyConfig.hasCredentials,
+          };
+          if (result.dispatcher) {
+            dispatcher = result.dispatcher;
+            usageEvent.viaProxy = true;
+            usageEvent.reason = 'proxy';
+          } else {
+            usageEvent.reason = result.reason ?? 'proxy-unavailable';
+            if (typeof result.error !== 'undefined') usageEvent.error = result.error;
+          }
+        } else if (requestOptions.proxy === false) {
+          usageEvent.reason = 'proxy-disabled';
         }
 
         const res = await this.fetchImpl(url, {
@@ -127,6 +391,7 @@ export class HttpClient {
         }
         return await res.text();
       } catch (err: any) {
+        if (typeof usageEvent.error === 'undefined') usageEvent.error = err;
         const status = err?.response?.statusCode ?? err?.statusCode;
         const isRetryable = status === 429 || (status >= 500 && status < 600) || err?.name === 'AbortError';
         if (attemptNo >= (this.retry.retries - 1) || !isRetryable) throw err;
@@ -149,6 +414,7 @@ export class HttpClient {
         return attempt(attemptNo + 1);
       } finally {
         if (timeout) clearTimeout(timeout);
+        proxyUsageListener?.({ ...usageEvent });
       }
     };
 
@@ -157,6 +423,25 @@ export class HttpClient {
 }
 
 export const defaultClient = new HttpClient();
+
+export function configureDefaultProxy(proxy: ProxyInput | false | undefined, rejectUnauthorized?: boolean) {
+  defaultClient.setProxy(proxy, rejectUnauthorized);
+}
+
+export function getDefaultProxyConfig(): ProxyUsageEvent['proxy'] | undefined {
+  return defaultClient.getProxyConfig();
+}
+
+export function configureCountryProxies(
+  proxies?: Record<string, ProxyInput | false | null | undefined>,
+  defaultRejectUnauthorized?: boolean,
+) {
+  defaultClient.setCountryProxies(proxies, defaultRejectUnauthorized);
+}
+
+export function getCountryProxyMap(): Record<string, ProxyUsageEvent['proxy']> {
+  return defaultClient.getCountryProxyMap();
+}
 
 // Testing hook
 export function __setFetchForTests(fetchImpl: FetchLike) {

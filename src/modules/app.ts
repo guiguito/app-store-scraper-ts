@@ -1,6 +1,7 @@
 import { lookup } from '../common';
 import type { App } from '../types';
 import { getScreenshotsWithFallback } from '../utils/screenshotFallback';
+import { withCountryRequestOptions } from '../utils/request-options';
 import { ratings as ratingsMethod } from './ratings';
 
 export interface AppOptions {
@@ -20,7 +21,15 @@ export async function app(opts: AppOptions): Promise<App> {
   }
   const idField = opts.id ? 'id' : 'bundleId';
   const idValue = (opts.id ?? opts.appId!) as string | number;
-  const results = await lookup([idValue], idField as any, opts.country, opts.lang, opts.requestOptions, opts.throttle);
+  const requestOptions = withCountryRequestOptions(opts.requestOptions, opts.country);
+  const results = await lookup(
+    [idValue],
+    idField as any,
+    opts.country,
+    opts.lang,
+    requestOptions,
+    opts.throttle,
+  );
   if (results.length === 0) {
     const { NotFoundError } = await import('../errors');
     throw new NotFoundError('App not found (404)');
@@ -36,12 +45,16 @@ export async function app(opts: AppOptions): Promise<App> {
       result,
       result.id ?? idValue,
       opts.country,
-      opts.requestOptions,
+      requestOptions,
     );
   }
   if (opts.ratings) {
     if (!opts.id) opts.id = result.id;
-    const ratings = await ratingsMethod({ id: String(opts.id), country: opts.country, requestOptions: opts.requestOptions });
+    const ratings = await ratingsMethod({
+      id: String(opts.id),
+      country: opts.country,
+      requestOptions,
+    });
     return { ...result, ...ratings } as App;
   }
   return result;

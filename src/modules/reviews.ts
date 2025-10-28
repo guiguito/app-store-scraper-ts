@@ -1,5 +1,6 @@
 import { storeId } from '../common';
 import { sort as SORT } from '../constants';
+import { withCountryRequestOptions } from '../utils/request-options';
 
 function ensureArray<T>(value: T | T[] | undefined): T[] {
   if (!value) return [];
@@ -39,7 +40,11 @@ export async function reviews(opts: ReviewsOptions) {
   const country = opts.country || 'us';
   const url = `https://itunes.apple.com/${country}/rss/customerreviews/page=${page}/id=${id}/sortby=${sort}/json`;
   const { defaultClient } = await import('../http/client');
-  const json = await defaultClient.request(url, {}, opts.requestOptions);
+  const json = await defaultClient.request(
+    url,
+    {},
+    withCountryRequestOptions(opts.requestOptions, country),
+  );
   const parsed = JSON.parse(json);
   const list = ensureArray(parsed?.feed?.entry);
   return list.map((review: any) => ({

@@ -1,6 +1,7 @@
 import { defaultClient } from '../http/client';
 import { storeId } from '../common';
 import * as cheerio from 'cheerio';
+import { withCountryRequestOptions } from '../utils/request-options';
 
 export interface RatingsOptions {
   id: string | number;
@@ -17,7 +18,12 @@ export async function ratings(opts: RatingsOptions): Promise<{ ratings: number; 
   const storefront = storeId(country);
   const idValue = String(opts.id);
   const url = `https://itunes.apple.com/${country}/customer-reviews/id${idValue}?displayable-kind=11`;
-  const html = await defaultClient.request(url, { 'X-Apple-Store-Front': `${storefront},12` }, opts.requestOptions);
+  const requestOptions = withCountryRequestOptions(opts.requestOptions, country);
+  const html = await defaultClient.request(
+    url,
+    { 'X-Apple-Store-Front': `${storefront},12` },
+    requestOptions,
+  );
   if (!html || html.length === 0) {
     const { NotFoundError } = await import('../errors');
     throw new NotFoundError('App not found (404)');

@@ -1,6 +1,7 @@
 import { defaultClient } from '../http/client';
 import type { RequestOptions } from '../http/client';
 import type { App } from '../types';
+import { withCountryRequestOptions } from './request-options';
 
 type DeviceType = 'iphone' | 'ipad' | 'appletv';
 
@@ -21,6 +22,7 @@ export async function extractScreenshotsFromWeb(
 ): Promise<FallbackScreenshots> {
   const url = `https://apps.apple.com/${country.toLowerCase()}/app/id${appId}`;
   try {
+    const requestOpts = withCountryRequestOptions(requestOptions, country);
     const html = await defaultClient.request(
       url,
       {
@@ -28,7 +30,7 @@ export async function extractScreenshotsFromWeb(
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.7',
       },
-      requestOptions,
+      requestOpts,
     );
 
     const matches = html.match(MZSTATIC_URL_REGEX) ?? [];
@@ -174,4 +176,3 @@ function resolutionScore(url: string): number {
   const height = Number(match[2]);
   return Number.isFinite(width) && Number.isFinite(height) ? width * height : 0;
 }
-

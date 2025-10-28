@@ -7,6 +7,7 @@ Reference: API/field parity with the original library where possible: https://gi
 ## Features
 - Strongly typed API and payloads (TypeScript).
 - HTTP client with exponential backoff, Retry-After support, and rate limiting.
+- HTTP and HTTPS proxy support via env vars or runtime configuration, plus TLS opt-out hooks.
 - Memoized facade to cache results in memory.
 - Dual ESM/CJS output; Node 18+ fetch-based.
 - Unit tests with Nock-style stubs; optional integration tests.
@@ -51,6 +52,50 @@ const vh = await versionHistory({ id: '324684580' });
 const store = memoized();
 const cached = await store.app({ id: '553834731' });
 ```
+
+## Proxy configuration
+- Requests go direct unless you opt in. Provide a per-country map via `configureCountryProxies({ US: 'https://...', FR: { url, rejectUnauthorized } })`. Country keys are case-insensitive; missing entries (or missing `country` params) fall back to a direct connection.
+- For a single global proxy call `configureDefaultProxy('https://proxy:8443')`. Calling `configureDefaultProxy(false)` or `configureCountryProxies()` resets everything to direct.
+- Pass `false` as `rejectUnauthorized` to tolerate self-signed certificates. This works for both country maps and one-off overrides.
+- Use `setProxyUsageListener` to log `proxy[...]` vs `direct` decisions—for example, the UI harness pipes these messages to the console.
+- You can still override proxies per request with `requestOptions.proxy` / `requestOptions.rejectUnauthorized` when you need a temporary exit that differs from the configured map.
+
+```ts
+import {
+  app,
+  configureCountryProxies,
+  configureDefaultProxy,
+  memoized,
+  setProxyUsageListener,
+} from 'app-store-scraper-ts';
+
+// Country map: US uses corp proxy, FR tunnels through a staging proxy that allows invalid certs.
+configureCountryProxies({
+  US: 'https://us-proxy.example:8443',
+  FR: { url: 'https://fr-proxy-staging.local:4443', rejectUnauthorized: false },
+});
+
+// Reset the map and fall back to a single proxy (optional)
+configureCountryProxies();
+configureDefaultProxy('https://fallback-proxy.example:8080');
+
+// Observe routing decisions: proxy[...] vs direct
+setProxyUsageListener((event) => {
+  const label = event.viaProxy ? `proxy[${event.country ?? '??'}:${event.proxy?.displayUrl}]` : `direct[${event.country ?? '??'}]`;
+  const insecure = event.proxy?.rejectUnauthorized === false ? ' ⚠ insecure TLS' : '';
+  console.log(`${label}${insecure} -> ${event.targetUrl}`);
+});
+
+// Requests automatically pick the proxy that matches the country parameter.
+await app({ id: '553834731', country: 'fr' }); // → goes through fr-proxy-staging.local
+await app({ id: '553834731', country: 'jp' }); // → direct (no JP proxy configured)
+
+// Per-request overrides still win when you need a temporary exit
+const store = memoized();
+await store.app({ id: '553834731', country: 'us', requestOptions: { proxy: 'http://temporary-proxy:3128' } });
+```
+
+Manual verification tip: run `npm run ui`, assign proxies to a couple of countries in the control panel, and call a geo-sensitive endpoint (e.g., `https://ifconfig.me`) through each storefront. Check the server console for `proxy[COUNTRY:…]` vs `direct` lines and confirm the reported IP/country changes accordingly.
 
 ## API Overview
 - `app(options)` → `App`

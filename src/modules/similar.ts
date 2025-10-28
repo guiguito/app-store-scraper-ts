@@ -1,6 +1,7 @@
 import { app as appMethod } from './app';
 import { storeId, lookup } from '../common';
 import { defaultClient } from '../http/client';
+import { withCountryRequestOptions } from '../utils/request-options';
 
 export interface SimilarOptions {
   id?: string | number;
@@ -20,10 +21,11 @@ export async function similar(opts: SimilarOptions) {
   }
   const id = opts.id || (await appMethod(opts).then((a) => a.id));
   const url = `${BASE_URL}${id}`;
+  const requestOptions = withCountryRequestOptions(opts.requestOptions, opts.country);
   const txt = await defaultClient.request(
     url,
     { 'X-Apple-Store-Front': `${storeId(opts.country)},32` },
-    opts.requestOptions,
+    requestOptions,
   );
   const index = txt.indexOf('customersAlsoBoughtApps');
   if (index === -1) return [];
