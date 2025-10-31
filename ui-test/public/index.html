@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>App Store Scraper — UI Test</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>App Store Scraper — UI Test</h1>
+      <p>Manual test harness for all endpoints. Build the library first.</p>
+    </header>
+    <main>
+      <section class="panel">
+        <form id="proxy-form">
+          <h2>Proxy Settings</h2>
+          <p class="hint">Leave rows blank to remove them. Requests without a matching country go direct.</p>
+          <div id="proxy-rows" class="proxy-list"></div>
+          <div class="proxy-actions">
+            <button type="button" id="add-proxy-row">Add Country Proxy</button>
+            <button type="submit">Apply Proxies</button>
+            <span id="proxy-status" class="proxy-status"></span>
+          </div>
+          <div class="proxy-options">
+            <label class="proxy-checkbox">
+              <input type="checkbox" id="mask-proxy-credentials" checked />
+              Mask credentials in summary
+            </label>
+            <div class="hint" id="env-proxy-hint"></div>
+          </div>
+          <div id="proxy-summary" class="proxy-summary"></div>
+        </form>
+      </section>
+      <section class="panel">
+        <form id="form">
+          <div class="grid">
+            <label>Method
+              <select id="method" name="method">
+                <option>app</option>
+                <option>list</option>
+                <option>search</option>
+                <option>developer</option>
+                <option>suggest</option>
+                <option>similar</option>
+                <option>reviews</option>
+                <option>ratings</option>
+                <option>privacy</option>
+                <option>versionHistory</option>
+              </select>
+            </label>
+            <label>id <input name="id" placeholder="553834731" /></label>
+            <label>appId <input name="appId" placeholder="com.midasplayer.apps.candycrushsaga" /></label>
+            <label>term <input name="term" placeholder="panda" /></label>
+            <label>devId <input name="devId" placeholder="284882218" /></label>
+            <label>country <input name="country" placeholder="us" /></label>
+            <label>lang <input name="lang" placeholder="en-us" /></label>
+            <label>num <input name="num" type="number" placeholder="50" /></label>
+            <label>page <input name="page" type="number" placeholder="1" /></label>
+            <label>sort <input name="sort" placeholder="mostRecent|mostHelpful" /></label>
+            <label>collection <input name="collection" placeholder="topfreeapplications" /></label>
+            <label>category <input name="category" placeholder="6014" /></label>
+            <label>fullDetail
+              <select name="fullDetail"><option value="">-</option><option>true</option><option>false</option></select>
+            </label>
+            <label>idsOnly
+              <select name="idsOnly"><option value="">-</option><option>true</option><option>false</option></select>
+            </label>
+            <label>ratings
+              <select name="ratings"><option value="">-</option><option>true</option><option>false</option></select>
+            </label>
+          </div>
+          <div class="actions">
+            <button type="submit">Run</button>
+            <button type="button" id="reset">Reset</button>
+          </div>
+        </form>
+      </section>
+      <section class="results">
+        <div class="nice">
+          <h2>Nice View</h2>
+          <div id="nice"></div>
+        </div>
+        <div class="raw">
+          <h2>Raw JSON</h2>
+          <pre id="raw"></pre>
+        </div>
+      </section>
+    </main>
+    <footer>
+      <small>Tip: adjust proxy routing above; look for `proxy[...]` vs `direct` logs in the server output to confirm routing.</small>
+    </footer>
+    <script src="script.js"></script>
+  </body>
+  </html>
