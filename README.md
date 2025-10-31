@@ -97,6 +97,13 @@ await store.app({ id: '553834731', country: 'us', requestOptions: { proxy: 'http
 
 Manual verification tip: run `npm run ui`, assign proxies to a couple of countries in the control panel, and call a geo-sensitive endpoint (e.g., `https://ifconfig.me`) through each storefront. Check the server console for `proxy[COUNTRY:…]` vs `direct` lines and confirm the reported IP/country changes accordingly.
 
+## UI test harness
+- Launch with `npm run ui` (builds the CJS bundle and starts a lightweight server on `http://localhost:3000`).
+- The top form exercises every endpoint; enter params, hit **Run**, and compare the “Nice View” and “Raw JSON” panes.
+- The proxy panel lets you add per-country proxy rows (HTTPS supported, credentials masked, optional “Allow invalid certs”). Unmatched countries fall back to direct routing.
+- Server logs show routing decisions via the runtime `setProxyUsageListener` hook, e.g., `proxy[FR:https://…]` vs `direct[JP]`.
+- Useful for manual QA: map `fr` to a proxy, call an IP-check endpoint through the France storefront, and confirm both the log output and the geo/IP change.
+
 ## API Overview
 - `app(options)` → `App`
 - `ratings(options)` → `{ ratings, histogram }`
