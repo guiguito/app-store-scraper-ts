@@ -1,3 +1,10 @@
+## 0.2.0 - 2025-09-28
+
+- feat(proxy): add per-country proxy map with HTTPS support, TLS opt-out, and usage listener hooks.
+- feat(ui): redesign test harness proxy panel for country-specific routing, credential masking, and logging.
+- docs: expand README with proxy configuration examples, per-country workflow, and manual verification steps.
+- test: add HttpClient coverage for country map routing, CONNECT headers, and fallback behavior.
+
 ## 0.1.3 - 2025-09-20
 
 - fix(app): add mzstatic web-scrape fallback when lookup screenshots are empty to restore iPhone/iPad imagery (mirrors reference behavior).
