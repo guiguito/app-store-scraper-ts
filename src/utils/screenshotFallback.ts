@@ -102,6 +102,8 @@ function isPotentialScreenshot(url: string): boolean {
   if (!/(\.png|\.jpg|\.jpeg)/i.test(url)) return false;
   if (lowered.includes('appicon') || lowered.includes('icon') || lowered.includes('logo')) return false;
   if (lowered.includes('artworkurl')) return false;
+  if (lowered.includes('placeholder')) return false;
+  if (/\/features\d*\//i.test(url)) return false;
   return (
     lowered.includes('screenshot') ||
     lowered.includes('imagegen') ||

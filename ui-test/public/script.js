@@ -322,6 +322,59 @@ function renderAppCards(apps) {
     card.appendChild(img);
     card.appendChild(body);
     wrap.appendChild(card);
+
+    const shotSections = [
+      { label: 'Screenshots', urls: a.screenshots },
+      { label: 'iPad Screenshots', urls: a.ipadScreenshots },
+      { label: 'Apple TV Screenshots', urls: a.appletvScreenshots },
+    ];
+    shotSections.forEach(({ label, urls }) => {
+      if (!Array.isArray(urls) || urls.length === 0) return;
+      const section = document.createElement('div');
+      section.className = 'screenshot-section';
+      const heading = document.createElement('div');
+      heading.className = 'screenshot-heading';
+      heading.textContent = `${label} (${urls.length})`;
+      section.appendChild(heading);
+      const rowWrap = document.createElement('div');
+      rowWrap.className = 'screenshot-row-wrap';
+      const btnLeft = document.createElement('button');
+      btnLeft.className = 'screenshot-arrow screenshot-arrow-left';
+      btnLeft.innerHTML = '&#8249;';
+      btnLeft.type = 'button';
+      const btnRight = document.createElement('button');
+      btnRight.className = 'screenshot-arrow screenshot-arrow-right';
+      btnRight.innerHTML = '&#8250;';
+      btnRight.type = 'button';
+      const row = document.createElement('div');
+      row.className = 'screenshot-row';
+      urls.forEach((src) => {
+        const thumb = document.createElement('img');
+        thumb.src = src;
+        thumb.className = 'screenshot-thumb';
+        thumb.loading = 'lazy';
+        thumb.addEventListener('click', () => openLightbox(src));
+        row.appendChild(thumb);
+      });
+      btnLeft.addEventListener('click', () => row.scrollBy({ left: -300, behavior: 'smooth' }));
+      btnRight.addEventListener('click', () => row.scrollBy({ left: 300, behavior: 'smooth' }));
+      rowWrap.appendChild(btnLeft);
+      rowWrap.appendChild(row);
+      rowWrap.appendChild(btnRight);
+      section.appendChild(rowWrap);
+      wrap.appendChild(section);
+    });
   });
   nice.appendChild(wrap);
+}
+
+function openLightbox(src) {
+  const overlay = document.createElement('div');
+  overlay.className = 'lightbox-overlay';
+  overlay.addEventListener('click', () => overlay.remove());
+  const img = document.createElement('img');
+  img.src = src;
+  img.className = 'lightbox-img';
+  overlay.appendChild(img);
+  document.body.appendChild(overlay);
 }

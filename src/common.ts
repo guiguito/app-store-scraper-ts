@@ -5,6 +5,16 @@ import { withCountryRequestOptions } from './utils/request-options';
 
 const LOOKUP_URL = 'https://itunes.apple.com/lookup';
 
+function filterScreenshots(urls?: string[]): string[] {
+  if (!Array.isArray(urls)) return [];
+  return urls.filter((url) => {
+    const lowered = url.toLowerCase();
+    if (lowered.includes('placeholder')) return false;
+    if (/\/features\d*\//i.test(url)) return false;
+    return true;
+  });
+}
+
 export function cleanApp(app: any): App {
   return {
     id: app.trackId,
@@ -36,9 +46,9 @@ export function cleanApp(app: any): App {
     reviews: app.userRatingCount,
     currentVersionScore: app.averageUserRatingForCurrentVersion,
     currentVersionReviews: app.userRatingCountForCurrentVersion,
-    screenshots: app.screenshotUrls,
-    ipadScreenshots: app.ipadScreenshotUrls,
-    appletvScreenshots: app.appletvScreenshotUrls,
+    screenshots: filterScreenshots(app.screenshotUrls),
+    ipadScreenshots: filterScreenshots(app.ipadScreenshotUrls),
+    appletvScreenshots: filterScreenshots(app.appletvScreenshotUrls),
     supportedDevices: app.supportedDevices,
   } as App;
 }
