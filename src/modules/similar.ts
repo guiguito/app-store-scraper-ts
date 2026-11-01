@@ -10,6 +10,8 @@ export interface SimilarOptions {
   appId?: string;
   country?: string;
   lang?: string;
+  /** Also fetch each app's App Store subtitle into `subtitle`: one extra request per 99 apps, skipped if it fails. Default false. */
+  subtitle?: boolean;
   requestOptions?: RequestOptions;
   throttle?: number;
 }
@@ -40,5 +42,5 @@ export async function similar(opts: SimilarOptions): Promise<App[]> {
   const match = regExp.exec(txt);
   const ids = match ? JSON.parse(match[1]) : [];
   if (!ids || ids.length === 0) return [];
-  return lookup(ids, 'id', country, opts.lang, requestOptions);
+  return lookup(ids, 'id', country, opts.lang, requestOptions, opts.subtitle);
 }

@@ -44,6 +44,8 @@ export interface ListOptions {
   lang?: string;
   num?: number;
   fullDetail?: boolean;
+  /** Also fetch each app's App Store subtitle into `subtitle`: one extra request per 99 apps, skipped if it fails. Only with `fullDetail: true`. Default false. */
+  subtitle?: boolean;
   requestOptions?: RequestOptions;
   throttle?: number;
 }
@@ -68,7 +70,7 @@ export async function list(opts: ListOptions = {}): Promise<AppLite[] | App[]> {
   const apps = ensureArray(parsed?.feed?.entry);
   if (opts.fullDetail) {
     const ids = apps.map((a: any) => a.id?.attributes?.['im:id']).filter(Boolean);
-    return lookup(ids, 'id', country, opts.lang, requestOptions);
+    return lookup(ids, 'id', country, opts.lang, requestOptions, opts.subtitle);
   }
   return apps.map(cleanApp);
 }

@@ -21,6 +21,8 @@ export interface SearchOptions {
   country?: string;
   lang?: string;
   idsOnly?: boolean;
+  /** Also fetch each app's App Store subtitle into `subtitle`: one extra request per 99 apps, skipped if it fails. Default false. */
+  subtitle?: boolean;
   requestOptions?: RequestOptions;
   throttle?: number;
 }
@@ -45,5 +47,5 @@ export async function search(opts: SearchOptions): Promise<App[] | Array<string 
   const results: Array<string | number> = (parsed?.bubbles?.[0]?.results ?? []).map((r: any) => r.id);
   const windowed: Array<string | number> = paginate(results, opts.num || 50, opts.page || 1);
   if (opts.idsOnly) return windowed;
-  return lookup(windowed, 'id', country, opts.lang, requestOptions);
+  return lookup(windowed, 'id', country, opts.lang, requestOptions, opts.subtitle);
 }

@@ -8,6 +8,8 @@ export interface DeveloperOptions {
   devId: string | number;
   country?: string;
   lang?: string;
+  /** Also fetch each app's App Store subtitle into `subtitle`: one extra request per 99 apps, skipped if it fails. Default false. */
+  subtitle?: boolean;
   requestOptions?: RequestOptions;
   throttle?: number;
 }
@@ -21,6 +23,7 @@ export async function developer(opts: DeveloperOptions): Promise<App[]> {
     opts.country,
     opts.lang,
     requestOptions,
+    opts.subtitle,
   );
   if (res.length === 0) throw new NotFoundError('Developer not found (404)');
   return res;

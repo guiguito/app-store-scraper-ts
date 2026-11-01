@@ -5,6 +5,7 @@ const store = require('../../dist/cjs');
 const CANDY_CRUSH = '553834731';
 const KING = '526656015';
 const PAGES = '361309726'; // Apple's Pages: stable privacy labels and long version history
+const FINAL_CUT_PRO = '424389933'; // Mac-only: subtitle lives under `osx`, not `ios`
 
 describe('Integration (live Apple endpoints)', function () {
   this.timeout(30000);
@@ -21,6 +22,13 @@ describe('Integration (live Apple endpoints)', function () {
     expect(app.title).to.be.a('string');
     expect(app.screenshots).to.not.be.empty;
     expect(app.ratings).to.be.greaterThan(1000);
+  });
+
+  it('subtitle (catalog API), iOS and Mac-only', async () => {
+    const [candy] = await store.search({ term: 'candy crush saga', num: 1, subtitle: true });
+    expect(candy.subtitle).to.be.a('string').and.not.empty;
+    const finalCut = await store.app({ id: FINAL_CUT_PRO, subtitle: true });
+    expect(finalCut.subtitle).to.be.a('string').and.not.empty;
   });
 
   it('app by bundle id', async () => {

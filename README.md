@@ -9,6 +9,7 @@ Reference: API/field parity with the original library where possible: https://gi
 - HTTP client with exponential backoff, Retry-After support, and rate limiting.
 - HTTP and HTTPS proxy support via env vars or runtime configuration, plus TLS opt-out hooks.
 - Memoized facade to cache results in memory.
+- Optional real App Store subtitles (`subtitle: true`), which Apple's lookup API doesn't return.
 - CommonJS output usable from both `require` and `import`; Node 20.18+ fetch-based.
 - Unit tests against a stubbed `fetch` (no network); optional live integration tests.
 
@@ -24,6 +25,7 @@ import {
 
 // Single app
 const candy = await app({ id: '553834731', ratings: true });
+const withSubtitle = await app({ id: '553834731', subtitle: true }); // withSubtitle.subtitle
 
 // Lists
 const topFree = await list({ collection: constants.collection.TOP_FREE_IOS, num: 10 });
@@ -122,6 +124,28 @@ Common options (where supported)
 - `lang` (string): IETF language tag (e.g., `en-us`). Default depends on endpoint.
 - `requestOptions` (`RequestOptions`): per-call HTTP overrides `{ method, headers, body, timeoutMs, proxy, rejectUnauthorized }`. Your headers override the ones the library sets (`X-Apple-Store-Front`, `Accept-Language`), matched case-insensitively.
 - `throttle` (number): max requests per second for the HTTP requests this call makes, retries included. Requests are spaced evenly (`1000 / throttle` ms apart, so `0.5` means one every 2 s); calls passing the same value share one budget.
+- `subtitle` (boolean): on `app`, `search`, `developer`, `similar` and `list({ fullDetail: true })`. See below.
+
+### App subtitles
+
+The subtitle is the short tagline under the app name on the App Store (30 characters max), e.g. Duolingo's "Spanish, French, Chess & Math".
+
+**It is not returned by default.** Apple's lookup API, which every method returning `App` uses, has no subtitle field (the original app-store-scraper doesn't return one either). Pass `subtitle: true` to get it:
+
+```ts
+const duolingo = await app({ id: 570060128, subtitle: true });
+duolingo.subtitle; // 'Spanish, French, Chess & Math'
+
+const results = await search({ term: 'language', num: 20, subtitle: true }); // 20 subtitles, 1 extra request
+```
+
+What to know:
+- **Do not use the first line of `description` as a subtitle.** It's a different text, usually a long sentence.
+- **Cost:** one extra request to Apple's catalog API (`apps.apple.com/api/apps/v1/catalog`) per 99 apps returned. `app()` and `search({ num: 50 })` each make 1 more request; `list({ num: 200, fullDetail: true })` makes 3 more (99 + 99 + 2). That's why it's opt-in: more requests means more chance of Apple rate-limiting you (HTTP 403/429).
+- **Country-specific:** the subtitle comes from the `country` storefront, in that storefront's language (Duolingo in `fr` is "Anglais, échecs et plus"). `lang` does not change it.
+- **May be missing:** `subtitle` stays `undefined` when the app has none, or when the catalog request fails. A failed subtitle request never fails the call; you still get the apps.
+- **Platform:** the iOS subtitle, or the Mac one for Mac-only apps.
+- Not available on `list()` without `fullDetail` (RSS entries aren't looked up), nor on `AppLite`.
 
 ---
 
@@ -132,7 +156,7 @@ Fetch app details by App Store numeric `id` or bundle identifier `appId`.
 
 Signature
 ```ts
-app({ id?, appId?, country?, lang?, ratings?, requestOptions?, throttle? }): Promise<App>
+app({ id?, appId?, country?, lang?, ratings?, subtitle?, requestOptions?, throttle? }): Promise<App>
 ```
 
 Parameters
@@ -141,6 +165,7 @@ Parameters
 - `country` (string): Country storefront (default `us`).
 - `lang` (string): Language/locale passed to Apple lookup (optional).
 - `ratings` (boolean): When true, merges `ratings()` totals and `histogram` into result.
+- `subtitle` (boolean): Also fetch each app's App Store subtitle into `subtitle` (default `false`; one extra request per 99 apps). See [App subtitles](#app-subtitles).
 - `requestOptions` (object): HTTP overrides.
 - `throttle` (number): max requests per second (see Common Options).
 
@@ -184,7 +209,7 @@ Fetch ranked lists (top free, top paid, etc.).
 
 Signature
 ```ts
-list({ collection, category?, country?, lang?, num?, fullDetail?, requestOptions?, throttle? }): Promise<AppLite[] | App[]>
+list({ collection, category?, country?, lang?, num?, fullDetail?, subtitle?, requestOptions?, throttle? }): Promise<AppLite[] | App[]>
 ```
 
 Parameters
@@ -194,6 +219,7 @@ Parameters
 - `lang` (string): Optional, forwarded to lookup when `fullDetail`.
 - `num` (number): Number of items (default 50, max 200).
 - `fullDetail` (boolean): When true, resolves summary entries via lookup to return full `App` objects.
+- `subtitle` (boolean): Also fetch each app's App Store subtitle into `subtitle` (only with `fullDetail: true`; default `false`; one extra request per 99 apps). See [App subtitles](#app-subtitles).
 - `requestOptions` (object): HTTP overrides.
 - `throttle` (number): max requests per second (see Common Options).
 
@@ -208,7 +234,7 @@ Search for apps by term.
 
 Signature
 ```ts
-search({ term, num?, page?, country?, lang?, idsOnly?, requestOptions?, throttle? }): Promise<App[] | string[]>
+search({ term, num?, page?, country?, lang?, idsOnly?, subtitle?, requestOptions?, throttle? }): Promise<App[] | string[]>
 ```
 
 Parameters
@@ -218,6 +244,7 @@ Parameters
 - `country` (string): Country storefront (default `us`).
 - `lang` (string): Accept-Language header (default `en-us`).
 - `idsOnly` (boolean): When true, returns only the app ids (`string[]`).
+- `subtitle` (boolean): Also fetch each app's App Store subtitle into `subtitle` (default `false`; one extra request per 99 apps). See [App subtitles](#app-subtitles).
 - `requestOptions` (object): HTTP overrides.
 - `throttle` (number): max requests per second (see Common Options).
 
@@ -232,13 +259,14 @@ List all apps by a developer id.
 
 Signature
 ```ts
-developer({ devId, country?, lang?, requestOptions?, throttle? }): Promise<App[]>
+developer({ devId, country?, lang?, subtitle?, requestOptions?, throttle? }): Promise<App[]>
 ```
 
 Parameters
 - `devId` (string|number): Apple developer id (required).
 - `country` (string): Default `us`.
 - `lang` (string): Optional, forwarded to Apple lookup.
+- `subtitle` (boolean): Also fetch each app's App Store subtitle into `subtitle` (default `false`; one extra request per 99 apps). See [App subtitles](#app-subtitles).
 - `requestOptions` (object): HTTP overrides.
 - `throttle` (number): max requests per second (see Common Options).
 
@@ -273,7 +301,7 @@ Fetch apps similar to a given app ("Customers Also Bought").
 
 Signature
 ```ts
-similar({ id?, appId?, country?, lang?, requestOptions?, throttle? }): Promise<App[]>
+similar({ id?, appId?, country?, lang?, subtitle?, requestOptions?, throttle? }): Promise<App[]>
 ```
 
 Parameters
@@ -281,6 +309,7 @@ Parameters
 - `appId` (string): Bundle id; if provided, resolved to `id` first.
 - `country` (string): Default `us`.
 - `lang` (string): Optional, forwarded to lookup.
+- `subtitle` (boolean): Also fetch each app's App Store subtitle into `subtitle` (default `false`; one extra request per 99 apps). See [App subtitles](#app-subtitles).
 - `requestOptions` (object): HTTP overrides.
 - `throttle` (number): max requests per second (see Common Options).
 
@@ -405,6 +434,7 @@ Full app object returned by `app()`, `search()`, `developer()`, `similar()`, and
 
 ```ts
 interface App extends AppLite {
+  subtitle?: string;                 // App Store subtitle; only with `subtitle: true` (see App subtitles)
   genres?: string[];                 // all genres
   genreIds?: string[];               // all genre ids
   primaryGenre?: string;             // primary genre label
