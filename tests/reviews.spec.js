@@ -45,3 +45,27 @@ describe('M3: reviews (tests first)', () => {
   });
 });
 
+
+describe('reviews: appId resolution', () => {
+  afterEach(() => resetFetch());
+
+  it('resolves appId (bundle id) to the numeric id before fetching reviews', async () => {
+    const urls = [];
+    __setFetchForTests(
+      mockFetch((url) => {
+        urls.push(url);
+        if (url.startsWith('https://itunes.apple.com/lookup')) return { body: JSON.stringify({ results: [ { trackId: 553834731, bundleId: 'com.midasplayer.apps.candycrushsaga' } ] }) };
+        if (url.includes('customerreviews')) return { body: JSON.stringify({ feed: {} }) };
+        return { status: 404, body: '' };
+      }),
+    );
+    await reviews({ appId: 'com.midasplayer.apps.candycrushsaga' });
+    expect(urls[0]).to.include('bundleId=com.midasplayer.apps.candycrushsaga');
+    expect(urls[1]).to.include('/id=553834731/');
+  });
+
+  it('throws NotFoundError when the appId does not exist', async () => {
+    __setFetchForTests(mockFetch(() => ({ body: JSON.stringify({ results: [] }) })));
+    await reviews({ appId: 'com.does.not.exist' }).then(() => { throw new Error('should fail'); }, (e) => expect(e.name).to.equal('NotFoundError'));
+  });
+});

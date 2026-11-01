@@ -38,6 +38,10 @@ function memoize<T extends AnyFn>(fn: T, opts: { maxAge?: number; max?: number }
       if (typeof first !== 'undefined') cache.delete(first);
     }
     cache.set(key, { v: result, t: now });
+    // Drop failures so a transient 429/5xx isn't replayed for maxAge.
+    result?.catch?.(() => {
+      if (cache.get(key)?.v === result) cache.delete(key);
+    });
     return result;
   }) as T;
 }

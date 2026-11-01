@@ -26,13 +26,11 @@
   },
   "type": "commonjs",
   "main": "dist/cjs/index.js",
-  "module": "dist/esm/index.js",
-  "types": "dist/esm/index.d.ts",
+  "types": "dist/cjs/index.d.ts",
   "exports": {
     ".": {
-      "require": "./dist/cjs/index.js",
-      "import": "./dist/esm/index.js",
-      "types": "./dist/esm/index.d.ts"
+      "types": "./dist/cjs/index.d.ts",
+      "default": "./dist/cjs/index.js"
     }
   },
   "files": [
@@ -41,9 +39,8 @@
   "sideEffects": false,
   "scripts": {
     "clean": "rm -rf dist",
-    "build:esm": "node node_modules/typescript/bin/tsc -p tsconfig.esm.json",
     "build:cjs": "node node_modules/typescript/bin/tsc -p tsconfig.cjs.json",
-    "build": "npm run clean && npm run build:esm && npm run build:cjs",
+    "build": "npm run clean && npm run build:cjs",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
     "format": "prettier --write .",
@@ -55,7 +52,8 @@
   },
   "dependencies": {
     "cheerio": "^1.0.0-rc.12",
-    "fast-xml-parser": "^4.4.1"
+    "fast-xml-parser": "^4.4.1",
+    "undici": "^6.19.8"
   },
   "devDependencies": {
     "@types/chai": "^4.3.11",
@@ -71,7 +69,6 @@
     "prettier": "^3.3.3",
     "ts-node": "^10.9.2",
     "typedoc": "^0.26.6",
-    "typescript": "^5.5.4",
-    "undici": "^6.19.8"
+    "typescript": "^5.5.4"
   }
 }

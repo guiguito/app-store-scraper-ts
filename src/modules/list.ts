@@ -1,4 +1,4 @@
-import { lookup, storeId } from '../common';
+import { ensureArray, lookup, storeId } from '../common';
 import { category as CATEGORIES, collection as COLLECTIONS } from '../constants';
 import { withCountryRequestOptions } from '../utils/request-options';
 
@@ -56,13 +56,13 @@ export async function list(opts: ListOptions = {}) {
   const s = storeId(country);
   const url = `http://ax.itunes.apple.com/WebObjects/MZStoreServices.woa/ws/RSS/${collection}/${categorySeg}/limit=${num}/json?s=${s}`;
   const { defaultClient } = await import('../http/client');
-  const requestOptions = withCountryRequestOptions(opts.requestOptions, country);
+  const requestOptions = withCountryRequestOptions({ ...opts.requestOptions, throttle: opts.throttle }, country);
   const json = await defaultClient.request(url, {}, requestOptions);
   const parsed = JSON.parse(json);
-  const apps = parsed?.feed?.entry ?? [];
+  const apps = ensureArray(parsed?.feed?.entry);
   if (opts.fullDetail) {
     const ids = apps.map((a: any) => a.id?.attributes?.['im:id']).filter(Boolean);
-    return lookup(ids, 'id', country, opts.lang, requestOptions, opts.throttle);
+    return lookup(ids, 'id', country, opts.lang, requestOptions);
   }
   return apps.map(cleanApp);
 }

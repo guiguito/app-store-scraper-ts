@@ -21,7 +21,7 @@ export async function similar(opts: SimilarOptions) {
   }
   const id = opts.id || (await appMethod(opts).then((a) => a.id));
   const url = `${BASE_URL}${id}`;
-  const requestOptions = withCountryRequestOptions(opts.requestOptions, opts.country);
+  const requestOptions = withCountryRequestOptions({ ...opts.requestOptions, throttle: opts.throttle }, opts.country);
   const txt = await defaultClient.request(
     url,
     { 'X-Apple-Store-Front': `${storeId(opts.country)},32` },
@@ -33,5 +33,5 @@ export async function similar(opts: SimilarOptions) {
   const match = regExp.exec(txt);
   const ids = match ? JSON.parse(match[1]) : [];
   if (!ids || ids.length === 0) return [];
-  return lookup(ids, 'id', opts.country, opts.lang, opts.requestOptions, opts.throttle);
+  return lookup(ids, 'id', opts.country, opts.lang, requestOptions);
 }

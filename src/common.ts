@@ -1,9 +1,17 @@
 import { defaultClient } from './http/client';
+import type { RequestOptions } from './http/client';
 import { markets } from './constants';
+import { NotFoundError } from './errors';
 import type { App } from './types';
 import { withCountryRequestOptions } from './utils/request-options';
 
 const LOOKUP_URL = 'https://itunes.apple.com/lookup';
+
+// Apple's RSS JSON feeds return a bare object instead of an array when there is a single entry.
+export function ensureArray<T>(value: T | T[] | undefined): T[] {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
 
 function filterScreenshots(urls?: string[]): string[] {
   if (!Array.isArray(urls)) return [];
@@ -59,7 +67,6 @@ export async function lookup(
   country = 'us',
   lang?: string,
   requestOptions?: any,
-  limit?: number,
 ): Promise<App[]> {
   const langParam = lang ? `&lang=${encodeURIComponent(lang)}` : '';
   const joinedIds = ids.join(',');
@@ -74,6 +81,23 @@ export async function lookup(
     (app: any) => typeof app.wrapperType === 'undefined' || app.wrapperType === 'software',
   );
   return softwareOnly.map(cleanApp);
+}
+
+// Same JSON as amp-api.apps.apple.com, served by apps.apple.com's own proxy without a bearer token.
+const CATALOG_URL = 'https://apps.apple.com/api/apps/v1/catalog';
+
+export async function catalogAppAttributes(
+  id: string | number,
+  country: string | undefined,
+  query: string,
+  requestOptions?: RequestOptions,
+): Promise<any> {
+  const store = (country || 'us').toLowerCase();
+  const url = `${CATALOG_URL}/${store}/apps/${encodeURIComponent(String(id))}?platform=web&${query}`;
+  const body = await defaultClient.request(url, {}, withCountryRequestOptions(requestOptions, store));
+  const attributes = body ? JSON.parse(body)?.data?.[0]?.attributes : undefined;
+  if (!attributes) throw new NotFoundError('App not found (404)');
+  return attributes;
 }
 
 export function storeId(countryCode?: string): string {

@@ -1,6 +1,6 @@
 # app-store-scraper-ts
 
-TypeScript rewrite of the excellent App Store scraper. Ships strong types, resilient HTTP (retry + backoff), and a memoized facade. Supports Node 18+ with dual ESM/CJS builds.
+TypeScript rewrite of the excellent App Store scraper. Ships strong types, resilient HTTP (retry + backoff), and a memoized facade. Supports Node 18+; ships a CommonJS build that ESM code can import directly.
 
 Reference: API/field parity with the original library where possible: https://github.com/facundoolano/app-store-scraper
 
@@ -9,7 +9,7 @@ Reference: API/field parity with the original library where possible: https://gi
 - HTTP client with exponential backoff, Retry-After support, and rate limiting.
 - HTTP and HTTPS proxy support via env vars or runtime configuration, plus TLS opt-out hooks.
 - Memoized facade to cache results in memory.
-- Dual ESM/CJS output; Node 18+ fetch-based.
+- CommonJS output usable from both `require` and `import`; Node 18+ fetch-based.
 - Unit tests with Nock-style stubs; optional integration tests.
 
 ## Install
@@ -118,10 +118,10 @@ Manual verification tip: run `npm run ui`, assign proxies to a couple of countri
 - `memoized(opts?)` → same API with memoized methods
 
 Common options (where supported)
-- `country` (string): ISO country code. Default: `us` (or `US` where Apple requires upper-case).
+- `country` (string): ISO country code. Default: `us`.
 - `lang` (string): IETF language tag (e.g., `en-us`). Default depends on endpoint.
 - `requestOptions` (object): per-call HTTP overrides `{ method, headers, body, timeoutMs }`.
-- `throttle` (number): requests per second. Currently forwarded internally but not applied per-call yet.
+- `throttle` (number): max requests per second for the HTTP requests this call makes (calls passing the same value share one budget).
 
 ---
 
@@ -142,7 +142,7 @@ Parameters
 - `lang` (string): Language/locale passed to Apple lookup (optional).
 - `ratings` (boolean): When true, merges `ratings()` totals and `histogram` into result.
 - `requestOptions` (object): HTTP overrides.
-- `throttle` (number): Reserved.
+- `throttle` (number): max requests per second (see Common Options).
 
 Returns
 - `App`: Full app document, fields detailed in Types below. When `ratings: true`, the object also includes `ratings` and `histogram`.
@@ -195,7 +195,7 @@ Parameters
 - `num` (number): Number of items (default 50, max 200).
 - `fullDetail` (boolean): When true, resolves summary entries via lookup to return full `App` objects.
 - `requestOptions` (object): HTTP overrides.
-- `throttle` (number): Reserved.
+- `throttle` (number): max requests per second (see Common Options).
 
 Returns
 - `AppLite[]` by default (summary entries from RSS) or `App[]` when `fullDetail: true`.
@@ -219,7 +219,7 @@ Parameters
 - `lang` (string): Accept-Language header (default `en-us`).
 - `idsOnly` (boolean): When true, returns only the app ids (`string[]`).
 - `requestOptions` (object): HTTP overrides.
-- `throttle` (number): Reserved.
+- `throttle` (number): max requests per second (see Common Options).
 
 Returns
 - `App[]` or `string[]` when `idsOnly` is true.
@@ -240,7 +240,7 @@ Parameters
 - `country` (string): Default `us`.
 - `lang` (string): Optional, forwarded to Apple lookup.
 - `requestOptions` (object): HTTP overrides.
-- `throttle` (number): Reserved.
+- `throttle` (number): max requests per second (see Common Options).
 
 Returns
 - `App[]` belonging to the developer.
@@ -282,7 +282,7 @@ Parameters
 - `country` (string): Default `us`.
 - `lang` (string): Optional, forwarded to lookup.
 - `requestOptions` (object): HTTP overrides.
-- `throttle` (number): Reserved.
+- `throttle` (number): max requests per second (see Common Options).
 
 Returns
 - `App[]` similar to the requested app (may be empty when Apple does not provide the section).
@@ -322,7 +322,7 @@ privacy({ id, country?, requestOptions? }): Promise<PrivacyDetails>
 
 Parameters
 - `id` (string|number): Numeric app id (required).
-- `country` (string): Default `US` (upper-case as required by Apple’s AMP API).
+- `country` (string): Default `us` (case-insensitive).
 - `requestOptions` (object): HTTP overrides.
 
 Returns
@@ -330,10 +330,10 @@ Returns
 
 Errors
 - `ValidationError` when `id` is missing.
-- `NotFoundError` when app or token cannot be fetched.
+- `NotFoundError` when the app is not in the catalog.
 
 ### versionHistory
-Fetch version history (iOS platform attributes) for an app.
+Fetch version history for an app (iOS when available, otherwise the platform the app ships on, e.g. macOS).
 
 Signature
 ```ts
@@ -342,15 +342,15 @@ versionHistory({ id, country?, requestOptions? }): Promise<VersionHistoryItem[]>
 
 Parameters
 - `id` (string|number): Numeric app id (required).
-- `country` (string): Default `US` (upper-case).
+- `country` (string): Default `us` (case-insensitive).
 - `requestOptions` (object): HTTP overrides.
 
 Returns
-- `VersionHistoryItem[]` for iOS containing `versionDisplay`, `releaseNotes`, `releaseDate`, `releaseTimestamp`.
+- `VersionHistoryItem[]` containing `versionDisplay`, `releaseNotes`, `releaseDate`, `releaseTimestamp`.
 
 Errors
 - `ValidationError` when `id` is missing.
-- `NotFoundError` when app or token cannot be fetched.
+- `NotFoundError` when the app is not in the catalog.
 
 ### memoized
 Wraps the full API with a simple in-memory cache.
@@ -501,7 +501,7 @@ interface VersionHistoryItem {
 - Exponential backoff with jitter and `Retry-After` support on 429/5xx.
 - Per-call `requestOptions` allow overriding `method`, `headers`, `body`, `timeoutMs`.
 - Proxy support via `HTTPS_PROXY`/`HTTP_PROXY` (undici `ProxyAgent` when available).
-- A rate limiter exists in the HTTP client; per-call `throttle` is currently reserved.
+- Per-call `throttle` caps requests per second through the HTTP client's rate limiter.
 
 ---
 
@@ -513,7 +513,7 @@ interface VersionHistoryItem {
 ---
 
 ## ESM/CJS
-- ESM: `import { app } from 'app-store-scraper-ts'` (uses `dist/esm`).
+- ESM: `import { app } from 'app-store-scraper-ts'` (Node loads `dist/cjs` and exposes its named exports).
 - CJS: `const store = require('app-store-scraper-ts')` (uses `dist/cjs`).
 
 ---

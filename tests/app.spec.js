@@ -155,3 +155,29 @@ describe('M1: app + ratings', () => {
     expect(res.histogram).to.deep.equal({ '5': 1, '4': 2, '3': 3, '2': 4, '1': 5 });
   });
 });
+
+describe('app: side effects and extra requests', () => {
+  afterEach(() => resetFetch());
+
+  const lookupBody = JSON.stringify({ results: [ { trackId: 553834731, bundleId: 'com.king.candy', trackName: 'Candy', screenshotUrls: ['https://img/s1.png'], ipadScreenshotUrls: [] } ] });
+
+  it('does not scrape the web page when only iPad screenshots are missing (iPhone-only app)', async () => {
+    const urls = [];
+    __setFetchForTests(mockFetch((url) => { urls.push(url); return url.startsWith('https://itunes.apple.com/lookup') ? { body: lookupBody } : { status: 404, body: '' }; }));
+    const result = await app({ id: '553834731' });
+    expect(result.screenshots).to.deep.equal(['https://img/s1.png']);
+    expect(urls.filter((u) => u.startsWith('https://apps.apple.com'))).to.have.length(0);
+  });
+
+  it('does not mutate the caller options when resolving ratings by appId', async () => {
+    __setFetchForTests(mockFetch((url) => {
+      if (url.startsWith('https://itunes.apple.com/lookup')) return { body: lookupBody };
+      if (url.includes('/customer-reviews/id553834731')) return { body: '<div class="rating-count">7 Ratings</div>' };
+      return { status: 404, body: '' };
+    }));
+    const opts = { appId: 'com.king.candy', ratings: true };
+    const result = await app(opts);
+    expect(result.ratings).to.equal(7);
+    expect(opts).to.deep.equal({ appId: 'com.king.candy', ratings: true });
+  });
+});

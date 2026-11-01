@@ -65,3 +65,15 @@ describe('M2: list', () => {
   });
 });
 
+
+describe('list: single-entry feed', () => {
+  afterEach(() => resetFetch());
+
+  it('handles feed.entry returned as an object (Apple does this for one result)', async () => {
+    const rss = JSON.stringify({ feed: { entry: { id: { attributes: { 'im:id': '1', 'im:bundleId': 'app.one' } }, 'im:name': { label: 'App One' } } } });
+    __setFetchForTests(mockFetch((url) => (url.includes('/ws/RSS/') ? { body: rss } : { status: 404, body: '' })));
+    const apps = await list({ collection: constants.collection.TOP_FREE_IOS, num: 1 });
+    expect(apps).to.have.length(1);
+    expect(apps[0].title).to.equal('App One');
+  });
+});

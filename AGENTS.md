@@ -4,7 +4,7 @@
 - `src/`: TypeScript source (mirror upstream modules: `app.ts`, `list.ts`, `search.ts`, `developer.ts`, `privacy.ts`, `suggest.ts`, `similar.ts`, `reviews.ts`, `ratings.ts`, `versionHistory.ts`). Entry: `src/index.ts`.
 - `src/http/` and `src/utils/`: HTTP client, throttling/retry, parsing helpers.
 - `tests/`: Mocha + Chai specs (`*.spec.ts`) matching module names (e.g., `tests/app.spec.ts`).
-- `dist/`: Compiled JS output (`dist/esm`, `dist/cjs`).
+- `dist/`: Compiled JS output (`dist/cjs`, also imported by ESM consumers).
 - `reference/app-store-scraper/`: Upstream JS implementation for parity checks (add `reference/` to `.gitignore`).
 
 ## Build, Test, and Development Commands

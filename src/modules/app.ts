@@ -21,15 +21,11 @@ export async function app(opts: AppOptions): Promise<App> {
   }
   const idField = opts.id ? 'id' : 'bundleId';
   const idValue = (opts.id ?? opts.appId!) as string | number;
-  const requestOptions = withCountryRequestOptions(opts.requestOptions, opts.country);
-  const results = await lookup(
-    [idValue],
-    idField as any,
+  const requestOptions = withCountryRequestOptions(
+    { ...opts.requestOptions, throttle: opts.throttle },
     opts.country,
-    opts.lang,
-    requestOptions,
-    opts.throttle,
   );
+  const results = await lookup([idValue], idField as any, opts.country, opts.lang, requestOptions);
   if (results.length === 0) {
     const { NotFoundError } = await import('../errors');
     throw new NotFoundError('App not found (404)');
@@ -37,10 +33,9 @@ export async function app(opts: AppOptions): Promise<App> {
 
   let result = results[0];
 
-  const missingIphoneScreenshots = !Array.isArray(result.screenshots) || result.screenshots.length === 0;
-  const missingIpadScreenshots = !Array.isArray(result.ipadScreenshots) || result.ipadScreenshots.length === 0;
-
-  if (missingIphoneScreenshots || missingIpadScreenshots) {
+  // Only scrape when lookup returned no screenshots at all. Empty iPad screenshots alone
+  // usually mean an iPhone-only (or Mac) app, and scraping those doubles every app() call.
+  if (!Array.isArray(result.screenshots) || result.screenshots.length === 0) {
     result = await getScreenshotsWithFallback(
       result,
       result.id ?? idValue,
@@ -49,9 +44,8 @@ export async function app(opts: AppOptions): Promise<App> {
     );
   }
   if (opts.ratings) {
-    if (!opts.id) opts.id = result.id;
     const ratings = await ratingsMethod({
-      id: String(opts.id),
+      id: String(opts.id ?? result.id),
       country: opts.country,
       requestOptions,
     });

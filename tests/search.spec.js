@@ -61,3 +61,20 @@ describe('M2: search', () => {
   });
 });
 
+
+describe('search: throttle', () => {
+  afterEach(() => resetFetch());
+
+  it('spaces requests according to `throttle` (requests per second)', async () => {
+    const starts = [];
+    __setFetchForTests(mockFetch((url) => {
+      starts.push(Date.now());
+      if (url.includes('MZStore.woa/wa/search')) return { body: JSON.stringify({ bubbles: [ { results: [ { id: '1' } ] } ] }) };
+      return { body: JSON.stringify({ results: [ { trackId: 1, bundleId: 'a', trackName: 'A' } ] }) };
+    }));
+    const res = await search({ term: 'x', throttle: 1 });
+    expect(res).to.have.length(1);
+    expect(starts).to.have.length(2);
+    expect(starts[1] - starts[0]).to.be.at.least(900); // the lookup waits for the next 1s window
+  });
+});

@@ -1,15 +1,10 @@
-import { storeId } from '../common';
+import { ensureArray, lookup } from '../common';
 import { sort as SORT } from '../constants';
 import { withCountryRequestOptions } from '../utils/request-options';
 
-function ensureArray<T>(value: T | T[] | undefined): T[] {
-  if (!value) return [];
-  return Array.isArray(value) ? value : [value];
-}
-
 export interface ReviewsOptions {
   id?: string | number;
-  appId?: string; // not used yet; could resolve via app()
+  appId?: string; // bundle id, resolved to the numeric id via lookup
   sort?: typeof SORT[keyof typeof SORT];
   page?: number;
   country?: string;
@@ -34,17 +29,22 @@ export async function reviews(opts: ReviewsOptions) {
     throw new ValidationError('Page cannot be greater than 10');
   }
 
-  const id = opts.id as string | number; // simplified for now
   const page = opts.page || 1;
   const sort = opts.sort || SORT.RECENT;
   const country = opts.country || 'us';
+  const requestOptions = withCountryRequestOptions(opts.requestOptions, country);
+  let id = opts.id;
+  if (!id) {
+    const [found] = await lookup([opts.appId!], 'bundleId', country, undefined, requestOptions);
+    if (!found) {
+      const { NotFoundError } = await import('../errors');
+      throw new NotFoundError('App not found (404)');
+    }
+    id = found.id;
+  }
   const url = `https://itunes.apple.com/${country}/rss/customerreviews/page=${page}/id=${id}/sortby=${sort}/json`;
   const { defaultClient } = await import('../http/client');
-  const json = await defaultClient.request(
-    url,
-    {},
-    withCountryRequestOptions(opts.requestOptions, country),
-  );
+  const json = await defaultClient.request(url, {}, requestOptions);
   const parsed = JSON.parse(json);
   const list = ensureArray(parsed?.feed?.entry);
   return list.map((review: any) => ({

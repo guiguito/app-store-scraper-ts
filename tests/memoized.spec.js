@@ -28,3 +28,28 @@ describe('M4: memoized facade', () => {
   });
 });
 
+
+describe('memoized: failures are not cached', () => {
+  afterEach(() => resetFetch());
+
+  it('retries a call that previously failed instead of replaying the rejection', async () => {
+    let fail = true;
+    let lookups = 0;
+    const lookupBody = JSON.stringify({ results: [ { trackId: 1, bundleId: 'app.one', trackName: 'One', screenshotUrls: ['s'], ipadScreenshotUrls: ['i'], appletvScreenshotUrls: ['t'] } ] });
+    __setFetchForTests(
+      mockFetch((url) => {
+        if (url.startsWith('https://itunes.apple.com/lookup')) {
+          lookups += 1;
+          return fail ? { status: 404, body: '' } : { body: lookupBody };
+        }
+        return { status: 404, body: '' };
+      }),
+    );
+    const store = memoized();
+    await store.app({ id: '1' }).then(() => { throw new Error('should fail'); }, (e) => expect(e.name).to.equal('HttpError'));
+    fail = false;
+    const app = await store.app({ id: '1' });
+    expect(app.id).to.equal(1);
+    expect(lookups).to.equal(2);
+  });
+});

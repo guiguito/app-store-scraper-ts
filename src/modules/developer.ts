@@ -11,14 +11,13 @@ export interface DeveloperOptions {
 
 export async function developer(opts: DeveloperOptions) {
   if (!opts?.devId) throw new (await import('../errors')).ValidationError('devId is required');
-  const requestOptions = withCountryRequestOptions(opts.requestOptions, opts.country);
+  const requestOptions = withCountryRequestOptions({ ...opts.requestOptions, throttle: opts.throttle }, opts.country);
   const res = await lookup(
     [opts.devId],
     'id',
     opts.country,
     opts.lang,
     requestOptions,
-    opts.throttle,
   );
   if (res.length === 0) throw new Error('Developer not found (404)');
   return res;

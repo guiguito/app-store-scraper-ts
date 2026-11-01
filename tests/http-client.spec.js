@@ -152,3 +152,17 @@ describe('HttpClient proxy handling', () => {
     expect(events[2].country).to.equal('DE');
   });
 });
+
+describe('HttpClient retries', () => {
+  it('retries network errors (fetch rejects with TypeError)', async () => {
+    const client = new HttpClient({ retry: { retries: 3, minDelayMs: 1, maxDelayMs: 5 } });
+    let calls = 0;
+    client.setFetchImpl(async () => {
+      calls += 1;
+      if (calls < 3) throw new TypeError('fetch failed');
+      return { ok: true, text: async () => 'ok' };
+    });
+    expect(await client.request('https://example.com/')).to.equal('ok');
+    expect(calls).to.equal(3);
+  });
+});

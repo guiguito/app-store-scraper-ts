@@ -26,7 +26,7 @@ module.exports = [
       sourceType: 'module',
       parser: tsParser,
       parserOptions: {
-        project: ['./tsconfig.esm.json', './tsconfig.cjs.json'],
+        project: ['./tsconfig.cjs.json'],
       },
       globals: {
         require: 'readonly',

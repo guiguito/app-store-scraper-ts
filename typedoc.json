@@ -1,7 +1,7 @@
 {
   "entryPoints": ["src/index.ts"],
   "out": "docs",
-  "tsconfig": "tsconfig.esm.json",
+  "tsconfig": "tsconfig.cjs.json",
   "excludeExternals": true,
   "excludePrivate": true,
   "excludeProtected": true,

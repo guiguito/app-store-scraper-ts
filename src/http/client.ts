@@ -51,6 +51,8 @@ export interface RequestOptions {
   proxy?: ProxyInput | false;
   rejectUnauthorized?: boolean;
   country?: string;
+  // max requests per second; requests using the same value share one bucket
+  throttle?: number;
 }
 
 type FetchLike = typeof fetch;
@@ -192,6 +194,7 @@ export interface ClientOptions {
 
 export class HttpClient {
   private limiter: RateLimiter;
+  private throttles = new Map<number, RateLimiter>();
   private retry: Required<RetryOptions>;
   private fetchImpl: FetchLike;
   private proxyConfig?: NormalizedProxyConfig;
@@ -393,7 +396,10 @@ export class HttpClient {
       } catch (err: any) {
         if (typeof usageEvent.error === 'undefined') usageEvent.error = err;
         const status = err?.response?.statusCode ?? err?.statusCode;
-        const isRetryable = status === 429 || (status >= 500 && status < 600) || err?.name === 'AbortError';
+        // fetch rejects with TypeError on network failures (ECONNRESET, DNS, socket closed).
+        const isNetworkError = err?.name === 'TypeError';
+        const isRetryable =
+          status === 429 || (status >= 500 && status < 600) || err?.name === 'AbortError' || isNetworkError;
         if (attemptNo >= (this.retry.retries - 1) || !isRetryable) throw err;
         // Honor Retry-After header when present
         let retryAfterMs: number | undefined;
@@ -418,7 +424,11 @@ export class HttpClient {
       }
     };
 
-    return this.limiter.run(() => attempt(0));
+    const rps = requestOptions.throttle;
+    if (!rps || rps <= 0) return this.limiter.run(() => attempt(0));
+    let throttle = this.throttles.get(rps);
+    if (!throttle) this.throttles.set(rps, (throttle = new RateLimiter(rps, 1000)));
+    return throttle.run(() => attempt(0));
   }
 }
 

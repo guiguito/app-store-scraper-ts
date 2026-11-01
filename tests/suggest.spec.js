@@ -27,3 +27,14 @@ describe('M2: suggest', () => {
   });
 });
 
+
+describe('suggest: numeric terms', () => {
+  afterEach(() => resetFetch());
+
+  it('keeps numeric-looking terms as strings', async () => {
+    const xml = makeSuggestXml(['2048', '007']);
+    __setFetchForTests(mockFetch((url) => (url.includes('MZSearchHints') ? { body: xml } : { status: 404, body: '' })));
+    const res = await suggest({ term: '20' });
+    expect(res.map((r) => r.term)).to.deep.equal(['2048', '007']);
+  });
+});
