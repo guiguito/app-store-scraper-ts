@@ -1,4 +1,4 @@
-## 0.4.2 - 2026-11-01
+## 0.5.0 - 2026-11-01
 
 - feat: `inAppPurchases({ id, country? })` returns the app's top in-app purchases (up to 10, as on the App Store page) with numeric `price`, `currency`, `formattedPrice`, `productId`, `subscription` and `subscriptionPeriod`; also `app({ inAppPurchases: true })`. One catalog request per app (Apple doesn't allow batching it).
 - feat: `requestOptions.signal` (`AbortSignal`) cancels a call: the in-flight request is aborted, nothing is retried, and the promise rejects with the signal's reason.
