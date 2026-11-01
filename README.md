@@ -1,6 +1,6 @@
 # app-store-scraper-ts
 
-TypeScript rewrite of the excellent App Store scraper. Ships strong types, resilient HTTP (retry + backoff), and a memoized facade. Supports Node 18+; ships a CommonJS build that ESM code can import directly.
+TypeScript rewrite of the excellent App Store scraper. Ships strong types, resilient HTTP (retry + backoff), and a memoized facade. Supports Node 20.18+; ships a CommonJS build that ESM code can import directly.
 
 Reference: API/field parity with the original library where possible: https://github.com/facundoolano/app-store-scraper
 
@@ -9,8 +9,8 @@ Reference: API/field parity with the original library where possible: https://gi
 - HTTP client with exponential backoff, Retry-After support, and rate limiting.
 - HTTP and HTTPS proxy support via env vars or runtime configuration, plus TLS opt-out hooks.
 - Memoized facade to cache results in memory.
-- CommonJS output usable from both `require` and `import`; Node 18+ fetch-based.
-- Unit tests with Nock-style stubs; optional integration tests.
+- CommonJS output usable from both `require` and `import`; Node 20.18+ fetch-based.
+- Unit tests against a stubbed `fetch` (no network); optional live integration tests.
 
 ## Install
 - npm: `npm install app-store-scraper-ts`
@@ -54,7 +54,7 @@ const cached = await store.app({ id: '553834731' });
 ```
 
 ## Proxy configuration
-- Requests go direct unless you opt in. Provide a per-country map via `configureCountryProxies({ US: 'https://...', FR: { url, rejectUnauthorized } })`. Country keys are case-insensitive; missing entries (or missing `country` params) fall back to a direct connection.
+- Requests go direct unless you opt in. Provide a per-country map via `configureCountryProxies({ US: 'https://...', FR: { url, rejectUnauthorized } })`. Country keys are case-insensitive. Calls without a `country` use the `us` storefront, so they go through the `US` entry; countries with no entry go direct.
 - For a single global proxy call `configureDefaultProxy('https://proxy:8443')`. Calling `configureDefaultProxy(false)` or `configureCountryProxies()` resets everything to direct.
 - Pass `false` as `rejectUnauthorized` to tolerate self-signed certificates. This works for both country maps and one-off overrides.
 - Use `setProxyUsageListener` to log `proxy[...]` vs `direct` decisions—for example, the UI harness pipes these messages to the console.
@@ -120,8 +120,8 @@ Manual verification tip: run `npm run ui`, assign proxies to a couple of countri
 Common options (where supported)
 - `country` (string): ISO country code. Default: `us`.
 - `lang` (string): IETF language tag (e.g., `en-us`). Default depends on endpoint.
-- `requestOptions` (object): per-call HTTP overrides `{ method, headers, body, timeoutMs }`.
-- `throttle` (number): max requests per second for the HTTP requests this call makes (calls passing the same value share one budget).
+- `requestOptions` (`RequestOptions`): per-call HTTP overrides `{ method, headers, body, timeoutMs, proxy, rejectUnauthorized }`. Your headers override the ones the library sets (`X-Apple-Store-Front`, `Accept-Language`), matched case-insensitively.
+- `throttle` (number): max requests per second for the HTTP requests this call makes, retries included. Requests are spaced evenly (`1000 / throttle` ms apart, so `0.5` means one every 2 s); calls passing the same value share one budget.
 
 ---
 
@@ -145,7 +145,7 @@ Parameters
 - `throttle` (number): max requests per second (see Common Options).
 
 Returns
-- `App`: Full app document, fields detailed in Types below. When `ratings: true`, the object also includes `ratings` and `histogram`.
+- `App`: Full app document, fields detailed in Types below. When lookup returns no iPhone screenshots, missing screenshot lists are filled from Apple's catalog API (one extra request, highest resolution per device). When `ratings: true`, the object also includes `ratings` and `histogram`.
 
 Errors
 - Throws `ValidationError` when neither `id` nor `appId` is provided.
@@ -177,7 +177,7 @@ Returns
 
 Errors
 - Throws `ValidationError` when `id` is missing.
-- Throws `NotFoundError` when the app page cannot be fetched.
+- Throws `NotFoundError` when the app does not exist.
 
 ### list
 Fetch ranked lists (top free, top paid, etc.).
@@ -247,7 +247,7 @@ Returns
 
 Errors
 - `ValidationError` when `devId` is missing.
-- `Error('Developer not found (404)')` when empty.
+- `NotFoundError('Developer not found (404)')` when the developer has no apps or does not exist.
 
 ### suggest
 Get search suggestions for a partial term.
@@ -295,11 +295,12 @@ Fetch paged customer reviews for an app.
 
 Signature
 ```ts
-reviews({ id, appId?, sort?, page?, country?, requestOptions? }): Promise<Review[]>
+reviews({ id?, appId?, sort?, page?, country?, requestOptions? }): Promise<Review[]>
 ```
 
 Parameters
-- `id` (string|number): Numeric app id. (`appId` is accepted by type but currently not used.)
+- `id` (string|number): Numeric app id.
+- `appId` (string): Bundle id; resolved to `id` with one extra lookup request.
 - `sort` (constants.sort): `RECENT` or `HELPFUL` (default `RECENT`).
 - `page` (number): 1..10 (Apple limits to 10 pages). Default `1`.
 - `country` (string): Default `us`.
@@ -310,6 +311,7 @@ Returns
 
 Errors
 - `ValidationError` on missing id/appId.
+- `NotFoundError` when `appId` does not resolve to an app.
 - `ValidationError` on invalid `sort`, `page < 1`, or `page > 10`.
 
 ### privacy
@@ -365,13 +367,15 @@ Parameters
 - `max` (number): Max cached keys (default 1000; FIFO eviction).
 
 Returns
-- Object exposing the same methods as the main module, but memoized per-argument list.
+- Object exposing the same methods (with the same types) as the main module, memoized per argument list. Failed calls are not cached.
 
 ---
 
 ## Types (Returned Objects)
 
 These are the main types returned by the library. Field presence may vary slightly per endpoint/availability.
+
+All of them are exported, along with each method's options type (`AppOptions`, `SearchOptions`, `ListOptions`, …) and `RequestOptions`. `search()` and `list()` are overloaded, so `idsOnly: true` / `fullDetail: true` narrow the return type.
 
 ### AppLite
 Summary entry returned by `list()` when `fullDetail` is not set.
@@ -499,16 +503,29 @@ interface VersionHistoryItem {
 
 ## HTTP, Retry, Proxy
 - Exponential backoff with jitter and `Retry-After` support on 429/5xx.
-- Per-call `requestOptions` allow overriding `method`, `headers`, `body`, `timeoutMs`.
-- Proxy support via `HTTPS_PROXY`/`HTTP_PROXY` (lowercase `https_proxy`/`http_proxy` also honored), using undici `ProxyAgent`.
-- Per-call `throttle` caps requests per second through the HTTP client's rate limiter.
+- Per-call `requestOptions` allow overriding `method`, `headers`, `body`, `timeoutMs`, `proxy`, `rejectUnauthorized`.
+- Proxy support via `HTTPS_PROXY`/`HTTP_PROXY` (lowercase `https_proxy`/`http_proxy` also honored), using undici's `ProxyAgent` and `fetch`.
+- Per-call `throttle` spaces requests `1000 / throttle` ms apart (fractions allowed); retries go through it too.
 
 ---
 
 ## Errors
+All three classes are exported, so you can branch with `instanceof`:
+
 - `ValidationError`: input validation issues (e.g., missing `id`, invalid `collection`).
-- `NotFoundError`: app not found / empty results for certain endpoints.
-- `HttpError`: non-2xx responses, includes `statusCode` and headers when available.
+- `NotFoundError`: unknown app (`app`, `ratings`, `privacy`, `versionHistory`, `reviews` with `appId`) or developer (`developer`).
+- `HttpError`: any other non-2xx response; includes `statusCode` and response headers.
+
+```ts
+import { privacy, NotFoundError } from 'app-store-scraper-ts';
+
+try {
+  await privacy({ id: '1' });
+} catch (err) {
+  if (err instanceof NotFoundError) console.log('no such app');
+  else throw err;
+}
+```
 
 ---
 
@@ -519,8 +536,9 @@ interface VersionHistoryItem {
 ---
 
 ## Testing
-- Unit tests stub network; run `npm test`.
-- Integration tests: `INTEGRATION=1 npm test`.
+- Unit tests stub the network (plus one real proxy tunnel against local servers); run `npm test`.
+- Integration tests hit Apple live: `INTEGRATION=1 npm test`.
+- CI runs on Node 20, 22, 24 and 26.
 - Coverage: `npm run test:coverage`.
 
 ---

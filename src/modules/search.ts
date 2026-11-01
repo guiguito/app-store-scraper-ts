@@ -1,4 +1,8 @@
+import { ValidationError } from '../errors';
+import { defaultClient } from '../http/client';
+import type { RequestOptions } from '../http/client';
 import { storeId, lookup } from '../common';
+import type { App } from '../types';
 import { withCountryRequestOptions } from '../utils/request-options';
 
 const BASE_URL = 'https://search.itunes.apple.com/WebObjects/MZStore.woa/wa/search?clientApplication=Software&media=software&term=';
@@ -17,18 +21,21 @@ export interface SearchOptions {
   country?: string;
   lang?: string;
   idsOnly?: boolean;
-  requestOptions?: any;
+  requestOptions?: RequestOptions;
   throttle?: number;
 }
 
-export async function search(opts: SearchOptions) {
-  if (!opts?.term) throw new (await import('../errors')).ValidationError('term is required');
+export function search(opts: SearchOptions & { idsOnly: true }): Promise<Array<string | number>>;
+export function search(opts: SearchOptions & { idsOnly?: false }): Promise<App[]>;
+export function search(opts: SearchOptions): Promise<App[] | Array<string | number>>;
+export async function search(opts: SearchOptions): Promise<App[] | Array<string | number>> {
+  if (!opts?.term) throw new ValidationError('term is required');
   const url = BASE_URL + encodeURIComponent(opts.term);
-  const storeFront = storeId(opts.country);
+  const country = opts.country || 'us';
+  const storeFront = storeId(country);
   const lang = opts.lang || 'en-us';
 
-  const { defaultClient } = await import('../http/client');
-  const requestOptions = withCountryRequestOptions({ ...opts.requestOptions, throttle: opts.throttle }, opts.country);
+  const requestOptions = withCountryRequestOptions({ ...opts.requestOptions, throttle: opts.throttle }, country);
   const json = await defaultClient.request(
     url,
     { 'X-Apple-Store-Front': `${storeFront},24 t:native`, 'Accept-Language': lang },
@@ -38,5 +45,5 @@ export async function search(opts: SearchOptions) {
   const results: Array<string | number> = (parsed?.bubbles?.[0]?.results ?? []).map((r: any) => r.id);
   const windowed: Array<string | number> = paginate(results, opts.num || 50, opts.page || 1);
   if (opts.idsOnly) return windowed;
-  return lookup(windowed, 'id', opts.country, opts.lang, requestOptions);
+  return lookup(windowed, 'id', country, opts.lang, requestOptions);
 }

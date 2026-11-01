@@ -1,15 +1,16 @@
+import { ValidationError } from '../errors';
+import type { RequestOptions } from '../http/client';
 import { catalogAppAttributes } from '../common';
 import type { VersionHistoryItem } from '../types';
 
 export interface VersionHistoryOptions {
   id: string | number;
   country?: string;
-  requestOptions?: any;
+  requestOptions?: RequestOptions;
 }
 
 export async function versionHistory(opts: VersionHistoryOptions): Promise<VersionHistoryItem[]> {
   if (!opts?.id) {
-    const { ValidationError } = await import('../errors');
     throw new ValidationError('id is required');
   }
   const attributes = await catalogAppAttributes(

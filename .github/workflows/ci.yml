@@ -9,14 +9,17 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [ 20, 22, 24, 26 ]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
       - run: npm run lint
-      - run: npm run build
-      - run: npm test --if-present
-      - run: npm run test:coverage --if-present
+      # Builds dist/cjs, runs the full suite (incl. the real proxy tunnel test) and enforces coverage.
+      - run: npm run test:coverage

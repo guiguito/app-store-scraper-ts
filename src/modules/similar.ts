@@ -1,6 +1,8 @@
-import { app as appMethod } from './app';
+import { NotFoundError, ValidationError } from '../errors';
 import { storeId, lookup } from '../common';
 import { defaultClient } from '../http/client';
+import type { RequestOptions } from '../http/client';
+import type { App } from '../types';
 import { withCountryRequestOptions } from '../utils/request-options';
 
 export interface SimilarOptions {
@@ -8,23 +10,28 @@ export interface SimilarOptions {
   appId?: string;
   country?: string;
   lang?: string;
-  requestOptions?: any;
+  requestOptions?: RequestOptions;
   throttle?: number;
 }
 
 const BASE_URL = 'https://itunes.apple.com/us/app/app/id';
 
-export async function similar(opts: SimilarOptions) {
+export async function similar(opts: SimilarOptions): Promise<App[]> {
   if (!opts?.id && !opts?.appId) {
-    const { ValidationError } = await import('../errors');
     throw new ValidationError('Either id or appId is required');
   }
-  const id = opts.id || (await appMethod(opts).then((a) => a.id));
+  const country = opts.country || 'us';
+  const requestOptions = withCountryRequestOptions({ ...opts.requestOptions, throttle: opts.throttle }, country);
+  let id = opts.id;
+  if (!id) {
+    const [found] = await lookup([opts.appId!], 'bundleId', country, opts.lang, requestOptions);
+    if (!found) throw new NotFoundError('App not found (404)');
+    id = found.id;
+  }
   const url = `${BASE_URL}${id}`;
-  const requestOptions = withCountryRequestOptions({ ...opts.requestOptions, throttle: opts.throttle }, opts.country);
   const txt = await defaultClient.request(
     url,
-    { 'X-Apple-Store-Front': `${storeId(opts.country)},32` },
+    { 'X-Apple-Store-Front': `${storeId(country)},32` },
     requestOptions,
   );
   const index = txt.indexOf('customersAlsoBoughtApps');
@@ -33,5 +40,5 @@ export async function similar(opts: SimilarOptions) {
   const match = regExp.exec(txt);
   const ids = match ? JSON.parse(match[1]) : [];
   if (!ids || ids.length === 0) return [];
-  return lookup(ids, 'id', opts.country, opts.lang, requestOptions);
+  return lookup(ids, 'id', country, opts.lang, requestOptions);
 }

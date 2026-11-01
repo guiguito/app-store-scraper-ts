@@ -1,3 +1,5 @@
+import { NotFoundError, ValidationError } from '../errors';
+import type { RequestOptions } from '../http/client';
 import { lookup } from '../common';
 import type { App } from '../types';
 import { getScreenshotsWithFallback } from '../utils/screenshotFallback';
@@ -9,14 +11,13 @@ export interface AppOptions {
   appId?: string;
   country?: string;
   lang?: string;
-  requestOptions?: any;
+  requestOptions?: RequestOptions;
   throttle?: number;
   ratings?: boolean;
 }
 
 export async function app(opts: AppOptions): Promise<App> {
   if (!opts?.id && !opts?.appId) {
-    const { ValidationError } = await import('../errors');
     throw new ValidationError('Either id or appId is required');
   }
   const idField = opts.id ? 'id' : 'bundleId';
@@ -27,7 +28,6 @@ export async function app(opts: AppOptions): Promise<App> {
   );
   const results = await lookup([idValue], idField as any, opts.country, opts.lang, requestOptions);
   if (results.length === 0) {
-    const { NotFoundError } = await import('../errors');
     throw new NotFoundError('App not found (404)');
   }
 

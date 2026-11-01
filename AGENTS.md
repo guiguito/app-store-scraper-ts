@@ -1,14 +1,14 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `src/`: TypeScript source (mirror upstream modules: `app.ts`, `list.ts`, `search.ts`, `developer.ts`, `privacy.ts`, `suggest.ts`, `similar.ts`, `reviews.ts`, `ratings.ts`, `versionHistory.ts`). Entry: `src/index.ts`.
+- `src/modules/`: one file per upstream method (`app.ts`, `list.ts`, `search.ts`, `developer.ts`, `privacy.ts`, `suggest.ts`, `similar.ts`, `reviews.ts`, `ratings.ts`, `version-history.ts`). Shared lookup/catalog helpers live in `src/common.ts`. Entry: `src/index.ts`.
 - `src/http/` and `src/utils/`: HTTP client, throttling/retry, parsing helpers.
-- `tests/`: Mocha + Chai specs (`*.spec.ts`) matching module names (e.g., `tests/app.spec.ts`).
+- `tests/`: Mocha + Chai specs in plain JS (`*.spec.js`) run against the built `dist/cjs` (e.g., `tests/app.spec.js`); `tests/helpers.js` provides `mockFetch`.
 - `dist/`: Compiled JS output (`dist/cjs`, also imported by ESM consumers).
 - `reference/app-store-scraper/`: Upstream JS implementation for parity checks (add `reference/` to `.gitignore`).
 
 ## Build, Test, and Development Commands
-- Install deps: `npm i` (Node 18+)
+- Install deps: `npm i` (Node 20.18+; CI covers 20, 22, 24, 26)
 - Build: `npm run build`
 - Test: `npm test` (unit); integration: `INTEGRATION=1 npm test`
 - Coverage: `npm run test:coverage` (nyc over `dist/cjs`)
@@ -23,8 +23,8 @@
 - Tooling: ESLint (@typescript-eslint) + Prettier; run `npm run lint:fix` before PRs.
 
 ## Testing Guidelines
-- Framework: Mocha + Chai + Nock; name tests `*.spec.ts`, mirror upstream.
-- Coverage: ≥90% lines/branches; include error paths and locale/country variants.
+- Framework: Mocha + Chai; stub HTTP with `mockFetch` + `__setFetchForTests` (nock can't intercept `fetch`); name tests `*.spec.js`, mirror upstream.
+- Coverage: thresholds in `.nycrc.json` (currently 88% statements, 76% branches, 90% functions, 90% lines); raise them as coverage grows. Include error paths and locale/country variants.
 - Network: stub by default; only a few opt-in integration tests (`INTEGRATION=1`).
 
 ## Commit & Pull Request Guidelines

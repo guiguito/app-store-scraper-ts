@@ -1,4 +1,6 @@
 const { expect } = require('chai');
+const http = require('http');
+const net = require('net');
 
 const {
   HttpClient,
@@ -150,6 +152,130 @@ describe('HttpClient proxy handling', () => {
     expect(events[1].proxy.rejectUnauthorized).to.equal(false);
     expect(events[2].viaProxy).to.equal(false);
     expect(events[2].country).to.equal('DE');
+  });
+});
+
+// No stubs: exercises the real undici ProxyAgent + fetch pairing against an in-process CONNECT proxy.
+describe('HttpClient real proxy tunnel', () => {
+  it('tunnels requests through an HTTP CONNECT proxy', async () => {
+    const sockets = [];
+    let tunnels = 0;
+    const target = http.createServer((_req, res) => res.end('via-proxy'));
+    const proxy = http.createServer();
+    proxy.on('connect', (req, client, head) => {
+      tunnels += 1;
+      const [host, port] = req.url.split(':');
+      const upstream = net.connect(Number(port), host, () => {
+        client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+        upstream.write(head);
+        upstream.pipe(client);
+        client.pipe(upstream);
+      });
+      upstream.on('error', () => client.destroy());
+      sockets.push(client, upstream);
+    });
+    await Promise.all([target, proxy].map((s) => new Promise((resolve) => s.listen(0, '127.0.0.1', resolve))));
+    try {
+      const client = new HttpClient({ proxy: `http://127.0.0.1:${proxy.address().port}`, retry: { retries: 1 } });
+      expect(await client.request(`http://127.0.0.1:${target.address().port}/`)).to.equal('via-proxy');
+      expect(tunnels).to.equal(1);
+    } finally {
+      sockets.forEach((s) => s.destroy());
+      target.closeAllConnections();
+      target.close();
+      proxy.close();
+    }
+  });
+});
+
+// Fake fetch that serves `responses` in order ({ status, headers, body } or an Error to throw).
+function sequence(responses, seen = []) {
+  return async (url, init) => {
+    seen.push({ url, init, at: Date.now() });
+    const next = responses[Math.min(seen.length - 1, responses.length - 1)];
+    if (next instanceof Error) throw next;
+    const status = next.status ?? 200;
+    return { status, ok: status < 300, headers: new Headers(next.headers || {}), text: async () => next.body ?? 'ok' };
+  };
+}
+
+describe('HttpClient retry policy', () => {
+  afterEach(() => setProxyUsageListener(undefined));
+  const fast = { retries: 3, minDelayMs: 1, maxDelayMs: 5000 };
+
+  it('honors Retry-After in seconds on 429', async () => {
+    const seen = [];
+    const client = new HttpClient({ retry: fast, fetchImpl: sequence([{ status: 429, headers: { 'Retry-After': '0.3' } }, {}], seen) });
+    expect(await client.request('https://example.com/')).to.equal('ok');
+    expect(seen[1].at - seen[0].at).to.be.at.least(280);
+  });
+
+  it('honors Retry-After as an HTTP date', async () => {
+    const seen = [];
+    const until = new Date(Date.now() + 1500).toUTCString(); // second resolution: 0.5s..1.5s away
+    const client = new HttpClient({ retry: fast, fetchImpl: sequence([{ status: 503, headers: { 'retry-after': until } }, {}], seen) });
+    await client.request('https://example.com/');
+    expect(seen[1].at - seen[0].at).to.be.at.least(400);
+  });
+
+  it('does not retry 4xx other than 429', async () => {
+    const seen = [];
+    const client = new HttpClient({ retry: fast, fetchImpl: sequence([{ status: 404 }], seen) });
+    await client.request('https://example.com/').then(() => { throw new Error('should fail'); }, (e) => expect(e.statusCode).to.equal(404));
+    expect(seen).to.have.length(1);
+  });
+
+  it('gives up after `retries` attempts and surfaces the last error', async () => {
+    const seen = [];
+    const client = new HttpClient({ retry: { retries: 3, minDelayMs: 1, maxDelayMs: 5 }, fetchImpl: sequence([{ status: 503 }], seen) });
+    await client.request('https://example.com/').then(() => { throw new Error('should fail'); }, (e) => expect(e.statusCode).to.equal(503));
+    expect(seen).to.have.length(3);
+  });
+
+  it('aborts a hung request after timeoutMs and retries it', async () => {
+    let calls = 0;
+    const client = new HttpClient({ retry: fast });
+    client.setFetchImpl((_url, init) => {
+      calls += 1;
+      if (calls > 1) return Promise.resolve({ ok: true, text: async () => 'ok' });
+      return new Promise((_resolve, reject) => init.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))));
+    });
+    expect(await client.request('https://example.com/', {}, { timeoutMs: 50 })).to.equal('ok');
+    expect(calls).to.equal(2);
+  });
+
+  it('emits one usage event per attempt, in order', async () => {
+    const events = [];
+    setProxyUsageListener((e) => events.push(e));
+    const client = new HttpClient({ retry: { retries: 3, minDelayMs: 1, maxDelayMs: 5 }, fetchImpl: sequence([{ status: 503 }, {}]) });
+    await client.request('https://example.com/');
+    expect(events).to.have.length(2);
+    expect(events[0].error.statusCode).to.equal(503);
+    expect(events[1].error).to.be.undefined;
+  });
+
+  it('lets requestOptions.headers override library headers, case-insensitively', async () => {
+    const seen = [];
+    const client = new HttpClient({ fetchImpl: sequence([{}], seen) });
+    await client.request('https://example.com/', { 'Accept-Language': 'en-us', 'X-Apple-Store-Front': '143441' }, { headers: { 'accept-language': 'fr-fr' } });
+    expect(seen[0].init.headers).to.deep.equal({ 'X-Apple-Store-Front': '143441', 'accept-language': 'fr-fr' });
+  });
+});
+
+describe('HttpClient throttle', () => {
+  it('spaces requests 1000/throttle ms apart, fractional rates included', async () => {
+    const seen = [];
+    const client = new HttpClient({ fetchImpl: sequence([{}], seen) });
+    await Promise.all([1, 2, 3].map(() => client.request('https://example.com/', {}, { throttle: 2.5 })));
+    expect(seen[1].at - seen[0].at).to.be.at.least(390);
+    expect(seen[2].at - seen[0].at).to.be.at.least(790);
+  });
+
+  it('sends retries through the throttle too', async () => {
+    const seen = [];
+    const client = new HttpClient({ retry: { retries: 2, minDelayMs: 1, maxDelayMs: 5 }, fetchImpl: sequence([{ status: 503 }, {}], seen) });
+    await client.request('https://example.com/', {}, { throttle: 5 });
+    expect(seen[1].at - seen[0].at).to.be.at.least(190);
   });
 });
 

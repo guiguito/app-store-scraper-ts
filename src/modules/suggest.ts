@@ -1,3 +1,6 @@
+import { ValidationError } from '../errors';
+import { defaultClient } from '../http/client';
+import type { RequestOptions } from '../http/client';
 import { storeId } from '../common';
 import { parseXml } from '../utils/xml';
 import { withCountryRequestOptions } from '../utils/request-options';
@@ -7,17 +10,17 @@ const BASE_URL = 'https://search.itunes.apple.com/WebObjects/MZSearchHints.woa/w
 export interface SuggestOptions {
   term: string;
   country?: string;
-  requestOptions?: any;
+  requestOptions?: RequestOptions;
 }
 
-export async function suggest(opts: SuggestOptions) {
-  if (!opts || !opts.term) throw new (await import('../errors')).ValidationError('term missing');
+export async function suggest(opts: SuggestOptions): Promise<Array<{ term: string }>> {
+  if (!opts || !opts.term) throw new ValidationError('term missing');
   const url = BASE_URL + encodeURIComponent(opts.term);
-  const { defaultClient } = await import('../http/client');
+  const country = opts.country || 'us';
   const xml = await defaultClient.request(
     url,
-    { 'X-Apple-Store-Front': `${storeId(opts.country)},29` },
-    withCountryRequestOptions(opts.requestOptions, opts.country),
+    { 'X-Apple-Store-Front': `${storeId(country)},29` },
+    withCountryRequestOptions(opts.requestOptions, country),
   );
   const parsed: any = parseXml(xml);
   // Path: plist -> dict[0] -> array[0] -> dict[] -> each dict has "string" entries, first being term
@@ -29,5 +32,5 @@ export async function suggest(opts: SuggestOptions) {
       const term = Array.isArray(str) ? str[0] : str;
       return term ? { term } : undefined;
     })
-    .filter(Boolean);
+    .filter((item): item is { term: string } => Boolean(item));
 }

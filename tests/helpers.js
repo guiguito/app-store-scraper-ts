@@ -8,13 +8,14 @@ function mockFetch(mapper) {
     return {
       status,
       ok,
+      headers: new Headers(res.headers || {}),
       text: async () => res.body ?? '',
     };
   };
 }
 
 function resetFetch() {
-  __setFetchForTests(fetch);
+  __setFetchForTests();
 }
 
 module.exports = { mockFetch, resetFetch };
