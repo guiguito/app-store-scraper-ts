@@ -13,6 +13,16 @@ export async function privacy(opts: PrivacyOptions): Promise<PrivacyDetails> {
   if (!opts?.id) {
     throw new ValidationError('id is required');
   }
-  const attributes = await catalogAppAttributes(opts.id, opts.country, 'fields=privacyDetails', opts.requestOptions);
-  return attributes.privacyDetails;
+  // The policy link lives under platformAttributes, which Apple only returns with additionalPlatforms.
+  const attributes = await catalogAppAttributes(
+    opts.id,
+    opts.country,
+    'fields=privacyDetails,privacyPolicyUrl&additionalPlatforms=iphone,mac',
+    opts.requestOptions,
+  );
+  const platforms = attributes.platformAttributes ?? {};
+  return {
+    ...attributes.privacyDetails,
+    privacyPolicyUrl: platforms.ios?.privacyPolicyUrl ?? platforms.osx?.privacyPolicyUrl ?? null,
+  };
 }

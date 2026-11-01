@@ -55,6 +55,27 @@ export interface RequestOptions {
   country?: string;
   // max requests per second; requests using the same value share one bucket
   throttle?: number;
+  /**
+   * Cancels the call: the in-flight request is aborted, no retry is attempted, and the
+   * promise rejects with the signal's reason (an `AbortError` DOMException by default).
+   */
+  signal?: AbortSignal;
+}
+
+// Resolves after `ms`, or rejects as soon as `signal` aborts.
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal!.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 type FetchLike = typeof fetch;
@@ -66,13 +87,14 @@ class RateLimiter {
 
   constructor(private readonly rps = 0) {}
 
-  run<T>(fn: () => Promise<T>): Promise<T> {
+  run<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     if (!(this.rps > 0)) return fn();
     const now = Date.now();
     const start = Math.max(now, this.nextStart);
     this.nextStart = start + 1000 / this.rps;
     if (start === now) return fn();
-    return new Promise((resolve) => setTimeout(resolve, start - now)).then(fn);
+    // ponytail: a cancelled call keeps its slot, so the next request still waits for it
+    return sleep(start - now, signal).then(fn);
   }
 }
 
@@ -328,7 +350,9 @@ export class HttpClient {
     const mergedHeaders = mergeHeaders(headers, requestOptions.headers);
 
     // One try; its timer and usage event are settled before any retry starts.
+    const userSignal = requestOptions.signal;
     const attempt = async (): Promise<string> => {
+      userSignal?.throwIfAborted(); // aborted while waiting for the rate limiter: don't send it
       const controller = new AbortController();
       const timeout = requestOptions.timeoutMs ? setTimeout(() => controller.abort(), requestOptions.timeoutMs) : undefined;
 
@@ -374,7 +398,7 @@ export class HttpClient {
           method,
           headers: mergedHeaders,
           body: requestOptions.body,
-          signal: controller.signal,
+          signal: userSignal ? AbortSignal.any([controller.signal, userSignal]) : controller.signal,
           // @ts-ignore - dispatcher is undici-specific and allowed when using undici fetch
           dispatcher,
         } as RequestInit);
@@ -412,11 +436,11 @@ export class HttpClient {
     // Every attempt, retries included, goes through the limiter.
     for (let attemptNo = 0; ; attemptNo++) {
       try {
-        return await limiter.run(attempt);
+        return await limiter.run(attempt, userSignal);
       } catch (err) {
         const delay = this.retryDelay(err, attemptNo);
         if (delay === undefined) throw err;
-        await new Promise((r) => setTimeout(r, delay));
+        await sleep(delay, userSignal); // rejects at once if the caller cancelled: a cancel is never retried
       }
     }
   }

@@ -9,8 +9,9 @@ import { similar } from './modules/similar';
 import { reviews } from './modules/reviews';
 import { privacy } from './modules/privacy';
 import { versionHistory } from './modules/version-history';
+import { inAppPurchases } from './modules/in-app-purchases';
 
-export { constants, app, ratings, list, search, developer, suggest, similar, reviews, privacy, versionHistory };
+export { constants, app, ratings, list, search, developer, suggest, similar, reviews, privacy, versionHistory, inAppPurchases };
 export {
   configureDefaultProxy,
   configureCountryProxies,
@@ -30,6 +31,7 @@ export type { SimilarOptions } from './modules/similar';
 export type { ReviewsOptions } from './modules/reviews';
 export type { PrivacyOptions } from './modules/privacy';
 export type { VersionHistoryOptions } from './modules/version-history';
+export type { InAppPurchasesOptions } from './modules/in-app-purchases';
 export * from './types';
 
 type AnyFn = (...args: any[]) => any;
@@ -71,5 +73,6 @@ export function memoized(opts?: { maxAge?: number; max?: number }) {
     reviews: memoize(reviews, opts),
     privacy: memoize(privacy, opts),
     versionHistory: memoize(versionHistory, opts),
+    inAppPurchases: memoize(inAppPurchases, opts),
   };
 }

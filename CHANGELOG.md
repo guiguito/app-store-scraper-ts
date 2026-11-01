@@ -1,3 +1,10 @@
+## 0.4.2 - 2026-11-01
+
+- feat: `inAppPurchases({ id, country? })` returns the app's top in-app purchases (up to 10, as on the App Store page) with numeric `price`, `currency`, `formattedPrice`, `productId`, `subscription` and `subscriptionPeriod`; also `app({ inAppPurchases: true })`. One catalog request per app (Apple doesn't allow batching it).
+- feat: `requestOptions.signal` (`AbortSignal`) cancels a call: the in-flight request is aborted, nothing is retried, and the promise rejects with the signal's reason.
+- feat(reviews): `voteSum` and `voteCount` on each review (already in Apple's feed, previously dropped).
+- feat(privacy): `privacyPolicyUrl`, the developer's privacy policy link (iOS, or Mac for Mac-only apps), or `null`.
+
 ## 0.4.1 - 2026-11-01
 
 - feat: opt-in `subtitle: true` on `app`, `search`, `developer`, `similar` and `list({ fullDetail: true })` adds each app's real App Store subtitle (`App.subtitle`). Apple's lookup API has no subtitle field, so it comes from the catalog API: one extra request per 99 apps, from the `country` storefront. If that request fails, apps come back without `subtitle` instead of the call failing. See "App subtitles" in the README.

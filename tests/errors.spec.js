@@ -23,6 +23,7 @@ describe('errors', () => {
     ['privacy', () => store.privacy({ id: '1' })],
     ['versionHistory', () => store.versionHistory({ id: '1' })],
     ['ratings', () => store.ratings({ id: '1' })],
+    ['inAppPurchases', () => store.inAppPurchases({ id: '1' })],
   ]) {
     it(`${name}: unknown id throws NotFoundError`, async () => {
       __setFetchForTests(mockFetch(() => ({ status: 404, body: '' })));

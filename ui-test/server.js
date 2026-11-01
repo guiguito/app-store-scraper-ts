@@ -241,6 +241,7 @@ async function handleApi(pathname, searchParams, res) {
       case 'ratings': return sendJson(res, 200, await store.ratings(opts));
       case 'privacy': return sendJson(res, 200, await store.privacy(opts));
       case 'versionHistory': return sendJson(res, 200, await store.versionHistory(opts));
+      case 'inAppPurchases': return sendJson(res, 200, await store.inAppPurchases(opts));
       default: return sendJson(res, 404, { error: 'Unknown API method' });
     }
   } catch (err) {

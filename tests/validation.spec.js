@@ -12,6 +12,7 @@ const cases = [
   ['similar without id/appId', () => store.similar({}), 'Either id or appId is required'],
   ['privacy without id', () => store.privacy({}), 'id is required'],
   ['versionHistory without id', () => store.versionHistory({}), 'id is required'],
+  ['inAppPurchases without id', () => store.inAppPurchases({}), 'id is required'],
   ['reviews without id/appId', () => store.reviews({}), 'Either id or appId is required'],
   ['reviews with invalid sort', () => store.reviews({ id: 1, sort: 'newest' }), 'Invalid sort newest'],
   ['reviews with page < 1', () => store.reviews({ id: 1, page: -1 }), 'Page cannot be lower than 1'],

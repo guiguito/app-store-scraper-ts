@@ -18,7 +18,9 @@ describe('M3: reviews (tests first)', () => {
             title: { label: 'Great' },
             content: { label: 'Nice app' },
             link: { attributes: { href: 'https://itunes.apple.com/us/review?id=1&type=Purple%20Software' } },
-            updated: { label: '2024-01-01T00:00:00-07:00' }
+            updated: { label: '2024-01-01T00:00:00-07:00' },
+            'im:voteSum': { label: '-2' },
+            'im:voteCount': { label: '7' }
           }
         ]
       }
@@ -33,6 +35,8 @@ describe('M3: reviews (tests first)', () => {
     const res = await reviews({ id: '553834731' });
     expect(res[0].userName).to.equal('Alice');
     expect(res[0].score).to.equal(5);
+    expect(res[0].voteSum).to.equal(-2);
+    expect(res[0].voteCount).to.equal(7);
   });
 
   it('validates page upper bound', async () => {
