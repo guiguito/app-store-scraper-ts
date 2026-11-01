@@ -1,5 +1,6 @@
-## Unreleased
+## 0.4.0 - 2026-11-01
 
+- BREAKING (types only): `requestOptions` is typed as `RequestOptions` instead of `any`, so unknown keys are now compile errors.
 - fix(build): `import { app } from 'app-store-scraper-ts'` failed on Node 22 because `dist/esm` was loaded as CommonJS; ESM consumers now get the CJS build's named exports.
 - fix(memoized): failed requests are no longer cached for `maxAge`.
 - fix(list): handle Apple feeds that return a single entry as an object (e.g. `num: 1`).
@@ -24,7 +25,6 @@
 - fix(developer): throw `NotFoundError` (still an `Error`, same message) when the developer has no apps.
 - fix(proxy): calls without `country` (`search`, `suggest`, `similar`) now route every request through the `us` storefront's proxy; previously the first request went direct and the follow-up lookup used the US proxy.
 - feat(types): `memoized()` is fully typed (was `any`); `privacy()` returns `PrivacyDetails`, `reviews()` returns `Review[]`, `ratings()` returns `Ratings`; `search()`/`list()` narrow on `idsOnly`/`fullDetail`; method option types and `RequestOptions` are exported.
-- BREAKING (types only): `requestOptions` is typed as `RequestOptions` instead of `any`, so unknown keys are now compile errors.
 - chore: `engines.node` is `>=20.18.1` (cheerio 1.2 already required it); CI runs Node 20, 22, 24 and 26; mocha 12; license field corrected to MIT to match `LICENSE`.
 - fix(app): the screenshot fallback now reads Apple's catalog API (`screenshotsByType`, grouped by device, exact sizes) instead of regex-scraping the apps.apple.com HTML, which could put iPad shots in the iPhone list and pick up unrelated images.
 - fix(http): `requestOptions.headers` now override the headers the library sets (case-insensitive), as documented and as upstream does.
