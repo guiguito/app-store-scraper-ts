@@ -3,18 +3,19 @@ import { defaultClient } from '../http/client';
 import type { RequestOptions } from '../http/client';
 import type { App, AppLite } from '../types';
 import { ensureArray, lookup, storeId } from '../common';
+import type { AppleJson } from '../common';
 import { category as CATEGORIES, collection as COLLECTIONS } from '../constants';
 import { withCountryRequestOptions } from '../utils/request-options';
 
-function parseLink(app: any): string | undefined {
+function parseLink(app: AppleJson): string | undefined {
   const link = app.link;
   if (!link) return undefined;
   const linkArray = Array.isArray(link) ? link : [link];
-  const alternate = linkArray.find((l: any) => l.attributes?.rel === 'alternate');
+  const alternate = linkArray.find((l: AppleJson) => l.attributes?.rel === 'alternate');
   return alternate?.attributes?.href;
 }
 
-function cleanApp(app: any): AppLite {
+function cleanApp(app: AppleJson): AppLite {
   const price = parseFloat(app['im:price']?.attributes?.amount ?? '0');
   return {
     id: app.id?.attributes?.['im:id'],
@@ -69,7 +70,7 @@ export async function list(opts: ListOptions = {}): Promise<AppLite[] | App[]> {
   const parsed = JSON.parse(json);
   const apps = ensureArray(parsed?.feed?.entry);
   if (opts.fullDetail) {
-    const ids = apps.map((a: any) => a.id?.attributes?.['im:id']).filter(Boolean);
+    const ids = apps.map((a: AppleJson) => a.id?.attributes?.['im:id']).filter(Boolean);
     return lookup(ids, 'id', country, opts.lang, requestOptions, opts.subtitle);
   }
   return apps.map(cleanApp);

@@ -31,7 +31,7 @@ export async function app(opts: AppOptions): Promise<App> {
     { ...opts.requestOptions, throttle: opts.throttle },
     opts.country,
   );
-  const results = await lookup([idValue], idField as any, opts.country, opts.lang, requestOptions, opts.subtitle);
+  const results = await lookup([idValue], idField, opts.country, opts.lang, requestOptions, opts.subtitle);
   if (results.length === 0) {
     throw new NotFoundError('App not found (404)');
   }

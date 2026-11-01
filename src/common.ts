@@ -7,6 +7,13 @@ import { withCountryRequestOptions } from './utils/request-options';
 
 const LOOKUP_URL = 'https://itunes.apple.com/lookup';
 
+/**
+ * A parsed Apple response. Apple documents none of these payloads and changes them without notice,
+ * so parsers read them defensively (optional chaining, fallbacks) instead of trusting a declared shape.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AppleJson = any;
+
 // Apple's RSS JSON feeds return a bare object instead of an array when there is a single entry.
 export function ensureArray<T>(value: T | T[] | undefined): T[] {
   if (!value) return [];
@@ -23,7 +30,7 @@ function filterScreenshots(urls?: string[]): string[] {
   });
 }
 
-export function cleanApp(app: any): App {
+export function cleanApp(app: AppleJson): App {
   return {
     id: app.trackId,
     appId: app.bundleId,
@@ -79,7 +86,7 @@ export async function lookup(
   );
   const parsed = JSON.parse(body);
   const softwareOnly = (parsed.results || []).filter(
-    (app: any) => typeof app.wrapperType === 'undefined' || app.wrapperType === 'software',
+    (app: AppleJson) => typeof app.wrapperType === 'undefined' || app.wrapperType === 'software',
   );
   const apps: App[] = softwareOnly.map(cleanApp);
   if (subtitle) await addSubtitles(apps, country, requestOptions);
@@ -109,7 +116,7 @@ export async function catalogApp(
   country: string | undefined,
   query: string,
   requestOptions?: RequestOptions,
-): Promise<any> {
+): Promise<AppleJson> {
   const store = (country || 'us').toLowerCase();
   const url = `${CATALOG_URL}/${store}/apps/${encodeURIComponent(String(id))}?platform=web&${query}`;
   const body = await requestApp(url, {}, withCountryRequestOptions(requestOptions, store));
@@ -123,7 +130,7 @@ export async function catalogAppAttributes(
   country: string | undefined,
   query: string,
   requestOptions?: RequestOptions,
-): Promise<any> {
+): Promise<AppleJson> {
   return (await catalogApp(id, country, query, requestOptions)).attributes;
 }
 
@@ -144,8 +151,8 @@ async function addSubtitles(apps: App[], country: string, requestOptions?: Reque
     const url = `${CATALOG_URL}/${store}/apps?ids=${ids}&platform=web&additionalPlatforms=iphone,mac`;
     try {
       const body = await defaultClient.request(url, {}, withCountryRequestOptions(requestOptions, store));
-      const byId = new Map<string, any>(
-        (JSON.parse(body)?.data ?? []).map((d: any) => [String(d.id), d.attributes?.platformAttributes]),
+      const byId = new Map<string, AppleJson>(
+        (JSON.parse(body)?.data ?? []).map((d: AppleJson) => [String(d.id), d.attributes?.platformAttributes]),
       );
       for (const app of chunk) {
         const platforms = byId.get(String(app.id));
@@ -162,5 +169,5 @@ export function storeId(countryCode?: string): string {
   const defaultStore = '143441';
   if (!countryCode) return defaultStore;
   const code = countryCode.toUpperCase() as keyof typeof markets;
-  return String((markets as any)[code] ?? defaultStore);
+  return String(markets[code] ?? defaultStore);
 }

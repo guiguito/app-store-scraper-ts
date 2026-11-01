@@ -1,3 +1,8 @@
+## Unreleased
+
+- fix(types): `RequestOptions.body` is typed as a fetch body (`RequestInit['body']`) instead of `any`, and the exported `BaseOptions.requestOptions` is now the full `RequestOptions`.
+- chore: lint is warning-free. Undici's proxy types replace `any`; Apple's undocumented payloads use one documented `AppleJson` type.
+
 ## 0.5.0 - 2026-11-01
 
 - feat: `inAppPurchases({ id, country? })` returns the app's top in-app purchases (up to 10, as on the App Store page) with numeric `price`, `currency`, `formattedPrice`, `productId`, `subscription` and `subscriptionPeriod`; also `app({ inAppPurchases: true })`. One catalog request per app (Apple doesn't allow batching it).

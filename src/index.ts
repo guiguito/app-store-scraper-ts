@@ -34,25 +34,23 @@ export type { VersionHistoryOptions } from './modules/version-history';
 export type { InAppPurchasesOptions } from './modules/in-app-purchases';
 export * from './types';
 
-type AnyFn = (...args: any[]) => any;
-
-function memoize<T extends AnyFn>(fn: T, opts: { maxAge?: number; max?: number } = {}): T {
+function memoize<T extends (...args: never[]) => unknown>(fn: T, opts: { maxAge?: number; max?: number } = {}): T {
   const maxAge = opts.maxAge ?? 1000 * 60 * 5; // 5 minutes
   const max = opts.max ?? 1000;
-  const cache = new Map<string, { v: any; t: number }>();
-  return ((...args: any[]) => {
+  const cache = new Map<string, { v: ReturnType<T>; t: number }>();
+  return ((...args: Parameters<T>) => {
     const key = JSON.stringify(args);
     const now = Date.now();
     const entry = cache.get(key);
     if (entry && now - entry.t < maxAge) return entry.v;
-    const result = fn(...args);
+    const result = fn(...args) as ReturnType<T>;
     if (cache.size >= max) {
       const first = cache.keys().next().value as string | undefined;
       if (typeof first !== 'undefined') cache.delete(first);
     }
     cache.set(key, { v: result, t: now });
     // Drop failures so a transient 429/5xx isn't replayed for maxAge.
-    result?.catch?.(() => {
+    (result as Promise<unknown>)?.catch?.(() => {
       if (cache.get(key)?.v === result) cache.delete(key);
     });
     return result;

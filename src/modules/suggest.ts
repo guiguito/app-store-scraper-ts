@@ -2,6 +2,7 @@ import { ValidationError } from '../errors';
 import { defaultClient } from '../http/client';
 import type { RequestOptions } from '../http/client';
 import { storeId } from '../common';
+import type { AppleJson } from '../common';
 import { parseXml } from '../utils/xml';
 import { withCountryRequestOptions } from '../utils/request-options';
 
@@ -22,12 +23,12 @@ export async function suggest(opts: SuggestOptions): Promise<Array<{ term: strin
     { 'X-Apple-Store-Front': `${storeId(country)},29` },
     withCountryRequestOptions(opts.requestOptions, country),
   );
-  const parsed: any = parseXml(xml);
+  const parsed = parseXml<AppleJson>(xml);
   // Path: plist -> dict[0] -> array[0] -> dict[] -> each dict has "string" entries, first being term
   const list = parsed?.plist?.dict?.array?.dict || parsed?.plist?.dict?.[0]?.array?.[0]?.dict || [];
   const items = Array.isArray(list) ? list : [list];
   return items
-    .map((d: any) => {
+    .map((d: AppleJson) => {
       const str = d?.string || d?.string?.[0];
       const term = Array.isArray(str) ? str[0] : str;
       return term ? { term } : undefined;
