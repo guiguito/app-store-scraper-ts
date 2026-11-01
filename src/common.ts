@@ -103,7 +103,8 @@ export async function requestApp(
 // Same JSON as amp-api.apps.apple.com, served by apps.apple.com's own proxy without a bearer token.
 const CATALOG_URL = 'https://apps.apple.com/api/apps/v1/catalog';
 
-export async function catalogAppAttributes(
+// The catalog resource for one app: `attributes` plus `relationships` (e.g. top-in-apps).
+export async function catalogApp(
   id: string | number,
   country: string | undefined,
   query: string,
@@ -112,9 +113,18 @@ export async function catalogAppAttributes(
   const store = (country || 'us').toLowerCase();
   const url = `${CATALOG_URL}/${store}/apps/${encodeURIComponent(String(id))}?platform=web&${query}`;
   const body = await requestApp(url, {}, withCountryRequestOptions(requestOptions, store));
-  const attributes = body ? JSON.parse(body)?.data?.[0]?.attributes : undefined;
-  if (!attributes) throw new NotFoundError('App not found (404)');
-  return attributes;
+  const app = body ? JSON.parse(body)?.data?.[0] : undefined;
+  if (!app?.attributes) throw new NotFoundError('App not found (404)');
+  return app;
+}
+
+export async function catalogAppAttributes(
+  id: string | number,
+  country: string | undefined,
+  query: string,
+  requestOptions?: RequestOptions,
+): Promise<any> {
+  return (await catalogApp(id, country, query, requestOptions)).attributes;
 }
 
 // Apple rejects 100 ids with "Too Many Ids" although its error message says the limit is 100.

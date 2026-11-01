@@ -244,6 +244,61 @@ describe('HttpClient retry policy', () => {
     expect(calls).to.equal(2);
   });
 
+  // Fake fetch that hangs until its signal aborts, like a slow Apple endpoint.
+  function hanging(counter) {
+    return (_url, init) => {
+      counter.calls += 1;
+      return new Promise((_resolve, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
+    };
+  }
+
+  it('signal: cancels an in-flight request with the abort reason and never retries it', async () => {
+    const counter = { calls: 0 };
+    // Long retry delays: a cancel that went through the retry path would take seconds.
+    const client = new HttpClient({ retry: { retries: 3, minDelayMs: 5000, maxDelayMs: 5000 }, fetchImpl: hanging(counter) });
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 20);
+    const started = Date.now();
+    await client.request('https://example.com/', {}, { signal: controller.signal })
+      .then(() => { throw new Error('should fail'); }, (e) => expect(e.name).to.equal('AbortError'));
+    expect(Date.now() - started).to.be.below(1000);
+    expect(counter.calls).to.equal(1);
+  });
+
+  it('signal: an already-aborted signal sends nothing', async () => {
+    const counter = { calls: 0 };
+    const client = new HttpClient({ retry: fast, fetchImpl: hanging(counter) });
+    const reason = new Error('stop');
+    await client.request('https://example.com/', {}, { signal: AbortSignal.abort(reason) })
+      .then(() => { throw new Error('should fail'); }, (e) => expect(e).to.equal(reason));
+    expect(counter.calls).to.equal(0);
+  });
+
+  it('signal: aborting while queued behind throttle stops right away and sends nothing', async () => {
+    const seen = [];
+    const client = new HttpClient({ retry: fast, fetchImpl: sequence([{}], seen) });
+    await client.request('https://example.com/1', {}, { throttle: 0.5 }); // next slot is 2 s away
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 30);
+    const started = Date.now();
+    await client.request('https://example.com/2', {}, { throttle: 0.5, signal: controller.signal })
+      .then(() => { throw new Error('should fail'); }, (e) => expect(e.name).to.equal('AbortError'));
+    expect(Date.now() - started).to.be.below(1000);
+    expect(seen.map((s) => s.url)).to.deep.equal(['https://example.com/1']);
+  });
+
+  it('signal: aborting during the retry wait stops right away', async () => {
+    const seen = [];
+    const client = new HttpClient({ retry: { retries: 3, minDelayMs: 5000, maxDelayMs: 5000 }, fetchImpl: sequence([{ status: 503 }], seen) });
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 30);
+    const started = Date.now();
+    await client.request('https://example.com/', {}, { signal: controller.signal })
+      .then(() => { throw new Error('should fail'); }, (e) => expect(e.name).to.equal('AbortError'));
+    expect(Date.now() - started).to.be.below(1000);
+    expect(seen).to.have.length(1);
+  });
+
   it('emits one usage event per attempt, in order', async () => {
     const events = [];
     setProxyUsageListener((e) => events.push(e));

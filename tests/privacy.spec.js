@@ -7,7 +7,7 @@ describe('M3: privacy', () => {
   afterEach(() => resetFetch());
 
   it('retrieves privacy details in a single token-free request', async () => {
-    const api = JSON.stringify({ data: [ { attributes: { privacyDetails: { managePrivacyChoicesUrl: null, privacyTypes: [ { privacyType: 'Data Used to Track You', identifier: 'DATA_USED_TO_TRACK_YOU', description: '...', dataCategories: [], purposes: [] } ] } } } ] });
+    const api = JSON.stringify({ data: [ { attributes: { platformAttributes: { ios: { privacyPolicyUrl: 'https://example.com/privacy' } }, privacyDetails: { managePrivacyChoicesUrl: null, privacyTypes: [ { privacyType: 'Data Used to Track You', identifier: 'DATA_USED_TO_TRACK_YOU', description: '...', dataCategories: [], purposes: [] } ] } } } ] });
     const calls = [];
     __setFetchForTests(
       mockFetch((url, init) => {
@@ -20,9 +20,18 @@ describe('M3: privacy', () => {
     const res = await privacy({ id: '324684580', country: 'FR' });
     expect(res.privacyTypes.length).to.be.greaterThan(0);
     expect(res.managePrivacyChoicesUrl).to.equal(null);
+    expect(res.privacyPolicyUrl).to.equal('https://example.com/privacy');
     expect(calls).to.have.length(1);
-    expect(calls[0].url).to.equal('https://apps.apple.com/api/apps/v1/catalog/fr/apps/324684580?platform=web&fields=privacyDetails');
+    expect(calls[0].url).to.equal('https://apps.apple.com/api/apps/v1/catalog/fr/apps/324684580?platform=web&fields=privacyDetails,privacyPolicyUrl&additionalPlatforms=iphone,mac');
     expect(calls[0].init.headers).to.not.have.property('Authorization');
+  });
+
+  it('privacyPolicyUrl: Mac link for Mac-only apps, null when there is none', async () => {
+    let platformAttributes = { osx: { privacyPolicyUrl: 'https://example.com/mac' } };
+    __setFetchForTests(mockFetch(() => ({ body: JSON.stringify({ data: [ { attributes: { platformAttributes, privacyDetails: { privacyTypes: [] } } } ] }) })));
+    expect((await privacy({ id: '1' })).privacyPolicyUrl).to.equal('https://example.com/mac');
+    platformAttributes = {};
+    expect((await privacy({ id: '1' })).privacyPolicyUrl).to.equal(null);
   });
 
   it('throws ValidationError when called without options', async () => {

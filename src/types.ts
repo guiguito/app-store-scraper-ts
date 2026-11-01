@@ -44,6 +44,33 @@ export interface App extends AppLite {
   supportedDevices?: string[];
   ratings?: number;
   histogram?: Record<string, number>;
+  /** Top in-app purchases. Only set when `app()` is called with `inAppPurchases: true`. */
+  inAppPurchases?: InAppPurchase[];
+}
+
+/**
+ * One of the app's top in-app purchases (Apple lists up to 10, the ones shown on the App Store page),
+ * priced in the `country` storefront's currency. Returned by `inAppPurchases()`.
+ */
+export interface InAppPurchase {
+  /** Apple's numeric id for the in-app purchase. */
+  id: string;
+  /** The developer's product identifier, e.g. `com.duolingo.DuolingoMobile.subscription.Premium.OneMonth`. */
+  productId: string;
+  /** Display name, e.g. "Super Duolingo". */
+  title: string;
+  /** Short description, when the developer set one (often the same as `title`). */
+  description?: string;
+  /** Numeric price, e.g. 9.99. */
+  price: number;
+  /** ISO 4217 currency code, e.g. "USD". */
+  currency: string;
+  /** Localized price as the store shows it, e.g. "$9.99" or "9,99 €". */
+  formattedPrice: string;
+  /** True for auto-renewable subscriptions. */
+  subscription: boolean;
+  /** Billing period of a subscription as an ISO 8601 duration (`P1W`, `P1M`, `P1Y`); undefined otherwise. */
+  subscriptionPeriod?: string;
 }
 
 export interface Review {
@@ -56,6 +83,10 @@ export interface Review {
   text: string;
   url: string;
   updated: string;
+  /** Helpful votes minus not-helpful votes (can be negative). */
+  voteSum: number;
+  /** Total votes, helpful and not helpful. */
+  voteCount: number;
 }
 
 export interface Ratings {
@@ -65,6 +96,8 @@ export interface Ratings {
 
 export interface PrivacyDetails {
   managePrivacyChoicesUrl: string | null;
+  /** The developer's privacy policy link from the App Store page (iOS, or Mac for Mac-only apps), or null. */
+  privacyPolicyUrl: string | null;
   privacyTypes: Array<{
     privacyType: string;
     identifier: string;

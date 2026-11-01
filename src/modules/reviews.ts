@@ -55,5 +55,7 @@ export async function reviews(opts: ReviewsOptions): Promise<Review[]> {
     text: review.content?.label,
     url: review.link?.attributes?.href,
     updated: review.updated?.label,
+    voteSum: parseInt(review['im:voteSum']?.label, 10),
+    voteCount: parseInt(review['im:voteCount']?.label, 10),
   }));
 }

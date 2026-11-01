@@ -10,6 +10,8 @@ Reference: API/field parity with the original library where possible: https://gi
 - HTTP and HTTPS proxy support via env vars or runtime configuration, plus TLS opt-out hooks.
 - Memoized facade to cache results in memory.
 - Optional real App Store subtitles (`subtitle: true`), which Apple's lookup API doesn't return.
+- In-app purchases with numeric prices, currency and subscription periods (`inAppPurchases()`).
+- Cancellable calls via a standard `AbortSignal` (`requestOptions.signal`).
 - CommonJS output usable from both `require` and `import`; Node 20.18+ fetch-based.
 - Unit tests against a stubbed `fetch` (no network); optional live integration tests.
 
@@ -20,7 +22,7 @@ Reference: API/field parity with the original library where possible: https://gi
 ```ts
 import {
   app, list, search, developer, suggest, similar,
-  reviews, ratings, privacy, versionHistory, constants, memoized,
+  reviews, ratings, privacy, versionHistory, inAppPurchases, constants, memoized,
 } from 'app-store-scraper-ts';
 
 // Single app
@@ -49,6 +51,9 @@ const ratingSummary = await ratings({ id: '553834731', country: 'us' });
 // Privacy & versions
 const pd = await privacy({ id: '324684580' });
 const vh = await versionHistory({ id: '324684580' });
+
+// In-app purchases (top 10, priced in the storefront's currency)
+const iaps = await inAppPurchases({ id: '570060128', country: 'fr' }); // [{ title: 'Super Duolingo', price: 9.99, currency: 'EUR', ... }]
 
 // Memoized facade (caches results 5 minutes by default)
 const store = memoized();
@@ -117,14 +122,36 @@ Manual verification tip: run `npm run ui`, assign proxies to a couple of countri
 - `reviews(options)` → `Review[]`
 - `privacy(options)` → `PrivacyDetails`
 - `versionHistory(options)` → `VersionHistoryItem[]`
+- `inAppPurchases(options)` → `InAppPurchase[]`
 - `memoized(opts?)` → same API with memoized methods
 
 Common options (where supported)
 - `country` (string): ISO country code. Default: `us`.
 - `lang` (string): IETF language tag (e.g., `en-us`). Default depends on endpoint.
-- `requestOptions` (`RequestOptions`): per-call HTTP overrides `{ method, headers, body, timeoutMs, proxy, rejectUnauthorized }`. Your headers override the ones the library sets (`X-Apple-Store-Front`, `Accept-Language`), matched case-insensitively.
+- `requestOptions` (`RequestOptions`): per-call HTTP overrides `{ method, headers, body, timeoutMs, proxy, rejectUnauthorized, signal }`. Your headers override the ones the library sets (`X-Apple-Store-Front`, `Accept-Language`), matched case-insensitively.
 - `throttle` (number): max requests per second for the HTTP requests this call makes, retries included. Requests are spaced evenly (`1000 / throttle` ms apart, so `0.5` means one every 2 s); calls passing the same value share one budget.
 - `subtitle` (boolean): on `app`, `search`, `developer`, `similar` and `list({ fullDetail: true })`. See below.
+
+### Cancelling a call
+
+Every method accepts a standard `AbortSignal` in `requestOptions.signal`. Aborting it stops the call right away:
+
+- the request in progress is aborted, and a request still queued behind `throttle` is never sent;
+- no retry is attempted, and a pending retry wait ends immediately;
+- the promise rejects with the signal's reason, which is a `DOMException` named `AbortError` unless you passed your own reason to `abort()`.
+
+```ts
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 5000); // give up after 5 s overall, retries included
+try {
+  await search({ term: 'chess', requestOptions: { signal: controller.signal } });
+} catch (err) {
+  if ((err as Error).name === 'AbortError') { /* cancelled */ }
+}
+// Shortcut for a deadline: requestOptions: { signal: AbortSignal.timeout(5000) } (rejects with a TimeoutError).
+```
+
+`timeoutMs` is different: it limits each attempt, and a timed-out attempt is retried. `signal` covers the whole call and is never retried.
 
 ### App subtitles
 
@@ -156,7 +183,7 @@ Fetch app details by App Store numeric `id` or bundle identifier `appId`.
 
 Signature
 ```ts
-app({ id?, appId?, country?, lang?, ratings?, subtitle?, requestOptions?, throttle? }): Promise<App>
+app({ id?, appId?, country?, lang?, ratings?, subtitle?, inAppPurchases?, requestOptions?, throttle? }): Promise<App>
 ```
 
 Parameters
@@ -165,6 +192,7 @@ Parameters
 - `country` (string): Country storefront (default `us`).
 - `lang` (string): Language/locale passed to Apple lookup (optional).
 - `ratings` (boolean): When true, merges `ratings()` totals and `histogram` into result.
+- `inAppPurchases` (boolean): When true, adds `inAppPurchases` (same data as the [`inAppPurchases()`](#inapppurchases) method). One extra request; unlike `subtitle`, the call throws if it fails, like `ratings`.
 - `subtitle` (boolean): Also fetch each app's App Store subtitle into `subtitle` (default `false`; one extra request per 99 apps). See [App subtitles](#app-subtitles).
 - `requestOptions` (object): HTTP overrides.
 - `throttle` (number): max requests per second (see Common Options).
@@ -357,7 +385,7 @@ Parameters
 - `requestOptions` (object): HTTP overrides.
 
 Returns
-- `PrivacyDetails` structured similarly to Apple’s App Privacy sections.
+- `PrivacyDetails` structured similarly to Apple’s App Privacy sections, plus `privacyPolicyUrl` (the developer's privacy policy link, or `null`).
 
 Errors
 - `ValidationError` when `id` is missing.
@@ -378,6 +406,39 @@ Parameters
 
 Returns
 - `VersionHistoryItem[]` containing `versionDisplay`, `releaseNotes`, `releaseDate`, `releaseTimestamp`.
+
+Errors
+- `ValidationError` when `id` is missing.
+- `NotFoundError` when the app is not in the catalog.
+
+### inAppPurchases
+Fetch the app's top in-app purchases: the list shown under "In-App Purchases" on its App Store page (up to 10, Apple's selection and order).
+
+Signature
+```ts
+inAppPurchases({ id, country?, requestOptions? }): Promise<InAppPurchase[]>
+```
+
+Parameters
+- `id` (string|number): Numeric app id (required).
+- `country` (string): Storefront; sets the currency and the language of names (default `us`, case-insensitive).
+- `requestOptions` (object): HTTP overrides.
+
+Returns
+- `InAppPurchase[]` (fields in Types below), or `[]` when the app has no in-app purchases.
+
+Good to know
+- One request to Apple's catalog API per app. Apple only serves this data for one app at a time, so there is no batch form: fetching it for 50 search results means 50 requests (use `throttle`).
+- Only Apple's top 10 are listed, not the full catalogue of an app's purchases.
+- Prices are what the storefront charges today; a subscription's free trial or intro price is not included.
+- Also available on `app({ id, inAppPurchases: true })`.
+
+Example
+```ts
+const iaps = await inAppPurchases({ id: 570060128 });
+// [{ id: '1365793322', productId: 'com.duolingo.DuolingoMobile.subscription.Premium.OneMonth…', title: 'Super Duolingo',
+//    price: 9.99, currency: 'USD', formattedPrice: '$9.99', subscription: true, subscriptionPeriod: 'P1M' }, …]
+```
 
 Errors
 - `ValidationError` when `id` is missing.
@@ -457,6 +518,8 @@ interface App extends AppLite {
   // When app({ ratings: true }) is used:
   ratings?: number;                  // total ratings (parsed from web page)
   histogram?: Record<string, number>;// star histogram { '5': n, ..., '1': n }
+  // When app({ inAppPurchases: true }) is used:
+  inAppPurchases?: InAppPurchase[];  // see InAppPurchase below
 }
 ```
 
@@ -474,6 +537,8 @@ interface Review {
   text: string;                      // review body
   url: string;                       // review URL
   updated: string;                   // ISO date
+  voteSum: number;                   // helpful minus not-helpful votes (can be negative)
+  voteCount: number;                 // total votes
 }
 ```
 
@@ -493,6 +558,7 @@ Returned by `privacy()`.
 ```ts
 interface PrivacyDetails {
   managePrivacyChoicesUrl: string | null;
+  privacyPolicyUrl: string | null;   // developer's privacy policy link (iOS, or Mac for Mac-only apps)
   privacyTypes: Array<{
     privacyType: string;             // section title, e.g., 'Data Used to Track You'
     identifier: string;              // enum identifier
@@ -519,6 +585,23 @@ interface VersionHistoryItem {
 }
 ```
 
+### InAppPurchase
+Returned by `inAppPurchases()` and `app({ inAppPurchases: true })`.
+
+```ts
+interface InAppPurchase {
+  id: string;                        // Apple's id for the purchase
+  productId: string;                 // developer's product identifier
+  title: string;                     // display name, e.g. 'Super Duolingo'
+  description?: string;              // short description, often the same as title
+  price: number;                     // e.g. 9.99
+  currency: string;                  // ISO 4217, e.g. 'USD'
+  formattedPrice: string;            // as the store shows it, e.g. '$9.99' or '9,99 €'
+  subscription: boolean;             // auto-renewable subscription?
+  subscriptionPeriod?: string;       // ISO 8601 billing period: 'P1W', 'P1M', 'P1Y' (subscriptions only)
+}
+```
+
 ---
 
 ## Constants
@@ -533,7 +616,7 @@ interface VersionHistoryItem {
 
 ## HTTP, Retry, Proxy
 - Exponential backoff with jitter and `Retry-After` support on 429/5xx.
-- Per-call `requestOptions` allow overriding `method`, `headers`, `body`, `timeoutMs`, `proxy`, `rejectUnauthorized`.
+- Per-call `requestOptions` allow overriding `method`, `headers`, `body`, `timeoutMs`, `proxy`, `rejectUnauthorized`, and cancelling with `signal` (see [Cancelling a call](#cancelling-a-call)).
 - Proxy support via `HTTPS_PROXY`/`HTTP_PROXY` (lowercase `https_proxy`/`http_proxy` also honored), using undici's `ProxyAgent` and `fetch`.
 - Per-call `throttle` spaces requests `1000 / throttle` ms apart (fractions allowed); retries go through it too.
 

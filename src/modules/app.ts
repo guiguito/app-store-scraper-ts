@@ -5,6 +5,7 @@ import type { App } from '../types';
 import { getScreenshotsWithFallback } from '../utils/screenshotFallback';
 import { withCountryRequestOptions } from '../utils/request-options';
 import { ratings as ratingsMethod } from './ratings';
+import { inAppPurchases as inAppPurchasesMethod } from './in-app-purchases';
 
 export interface AppOptions {
   id?: string | number;
@@ -16,6 +17,8 @@ export interface AppOptions {
   ratings?: boolean;
   /** Also fetch each app's App Store subtitle into `subtitle`: one extra request per 99 apps, skipped if it fails. Default false. */
   subtitle?: boolean;
+  /** Also fetch the app's top in-app purchases into `inAppPurchases`: one extra request; throws if it fails. Default false. */
+  inAppPurchases?: boolean;
 }
 
 export async function app(opts: AppOptions): Promise<App> {
@@ -44,6 +47,10 @@ export async function app(opts: AppOptions): Promise<App> {
       opts.country,
       requestOptions,
     );
+  }
+  if (opts.inAppPurchases) {
+    const purchases = await inAppPurchasesMethod({ id: result.id, country: opts.country, requestOptions });
+    result = { ...result, inAppPurchases: purchases };
   }
   if (opts.ratings) {
     const ratings = await ratingsMethod({

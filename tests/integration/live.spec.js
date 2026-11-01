@@ -74,16 +74,26 @@ describe('Integration (live Apple endpoints)', function () {
     const reviews = await store.reviews({ id: CANDY_CRUSH });
     expect(reviews).to.not.be.empty;
     expect(reviews[0].score).to.be.within(1, 5);
+    expect(reviews[0].voteCount).to.be.a('number').and.not.NaN;
   });
 
   it('privacy', async () => {
     const details = await store.privacy({ id: PAGES });
     expect(details.privacyTypes).to.not.be.empty;
+    expect(details.privacyPolicyUrl).to.match(/^https?:\/\//);
   });
 
   it('versionHistory', async () => {
     const history = await store.versionHistory({ id: PAGES });
     expect(history.length).to.be.greaterThan(5);
+  });
+
+  it('inAppPurchases', async () => {
+    const iaps = await store.inAppPurchases({ id: CANDY_CRUSH });
+    expect(iaps).to.not.be.empty;
+    expect(iaps[0].price).to.be.a('number');
+    expect(iaps[0].currency).to.equal('USD');
+    expect(iaps[0].formattedPrice).to.be.a('string').and.not.empty;
   });
 
   it('unknown app id throws NotFoundError', async () => {
