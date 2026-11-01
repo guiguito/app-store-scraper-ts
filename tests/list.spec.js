@@ -47,6 +47,17 @@ describe('M2: list', () => {
     expect(apps[0].free).to.equal(true);
   });
 
+  it('parses developerId without the artist URL query string', async () => {
+    const entry = (id, href) => ({ id: { attributes: { 'im:id': id, 'im:bundleId': `app.${id}` } }, 'im:name': { label: id }, 'im:image': [{ label: 'a' }], link: [{ attributes: { rel: 'alternate', href: `https://apps.apple.com/app/${id}` } }], 'im:price': { attributes: { amount: '0', currency: 'USD' } }, 'im:artist': { label: 'Dev', attributes: { href } } });
+    const rss = JSON.stringify({ feed: { entry: [
+      entry('1', 'https://apps.apple.com/us/developer/new-york-road-runners-inc/id1161512269?uo=2'),
+      entry('2', 'https://itunes.apple.com/us/artist/dev/id9?mt=8&uo=2'),
+    ] } });
+    __setFetchForTests(mockFetch((url) => (url.includes('/ws/RSS/') ? { body: rss } : { status: 404, body: '' })));
+    const apps = await list({ collection: constants.collection.TOP_FREE_IOS, num: 2 });
+    expect(apps.map((a) => a.developerId)).to.deep.equal(['1161512269', '9']);
+  });
+
   it('fetches list with fullDetail via lookup', async () => {
     const rss = JSON.stringify({ feed: { entry: [ { id: { attributes: { 'im:id': '1', 'im:bundleId': 'app.one' } }, 'im:name': { label: 'App One' }, 'im:image': [{label:'a'}] } ] } });
     const lookupBody = JSON.stringify({ results: [ { trackId: 1, bundleId: 'app.one', trackName: 'App One', trackViewUrl: 'https://apps.apple.com/app/1', description: 'desc', price: 0, currency: 'USD', artistId: 9, artistName: 'Dev' } ] });
