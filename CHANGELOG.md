@@ -1,3 +1,8 @@
+## 0.4.1 - 2026-11-01
+
+- feat: opt-in `subtitle: true` on `app`, `search`, `developer`, `similar` and `list({ fullDetail: true })` adds each app's real App Store subtitle (`App.subtitle`). Apple's lookup API has no subtitle field, so it comes from the catalog API: one extra request per 99 apps, from the `country` storefront. If that request fails, apps come back without `subtitle` instead of the call failing. See "App subtitles" in the README.
+- fix(deps): fast-xml-parser ^5 (4.x is flagged by `npm audit` for GHSA-gh4j-gqv2-49f6; only its XML builder is affected, which this package doesn't use).
+
 ## 0.4.0 - 2026-11-01
 
 - BREAKING (types only): `requestOptions` is typed as `RequestOptions` instead of `any`, so unknown keys are now compile errors.

@@ -14,6 +14,8 @@ export interface AppOptions {
   requestOptions?: RequestOptions;
   throttle?: number;
   ratings?: boolean;
+  /** Also fetch each app's App Store subtitle into `subtitle`: one extra request per 99 apps, skipped if it fails. Default false. */
+  subtitle?: boolean;
 }
 
 export async function app(opts: AppOptions): Promise<App> {
@@ -26,7 +28,7 @@ export async function app(opts: AppOptions): Promise<App> {
     { ...opts.requestOptions, throttle: opts.throttle },
     opts.country,
   );
-  const results = await lookup([idValue], idField as any, opts.country, opts.lang, requestOptions);
+  const results = await lookup([idValue], idField as any, opts.country, opts.lang, requestOptions, opts.subtitle);
   if (results.length === 0) {
     throw new NotFoundError('App not found (404)');
   }

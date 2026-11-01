@@ -67,6 +67,7 @@ export async function lookup(
   country = 'us',
   lang?: string,
   requestOptions?: RequestOptions,
+  subtitle = false,
 ): Promise<App[]> {
   const langParam = lang ? `&lang=${encodeURIComponent(lang)}` : '';
   const joinedIds = ids.join(',');
@@ -80,7 +81,9 @@ export async function lookup(
   const softwareOnly = (parsed.results || []).filter(
     (app: any) => typeof app.wrapperType === 'undefined' || app.wrapperType === 'software',
   );
-  return softwareOnly.map(cleanApp);
+  const apps: App[] = softwareOnly.map(cleanApp);
+  if (subtitle) await addSubtitles(apps, country, requestOptions);
+  return apps;
 }
 
 // For endpoints addressed by app id, where Apple answers 404 when the id is unknown.
@@ -112,6 +115,37 @@ export async function catalogAppAttributes(
   const attributes = body ? JSON.parse(body)?.data?.[0]?.attributes : undefined;
   if (!attributes) throw new NotFoundError('App not found (404)');
   return attributes;
+}
+
+// Apple rejects 100 ids with "Too Many Ids" although its error message says the limit is 100.
+const CATALOG_MAX_IDS = 99;
+
+/**
+ * Sets `subtitle` on each app from Apple's catalog API: the lookup API has no subtitle field.
+ * One request per 99 apps. Best effort: if a request fails, those apps keep no `subtitle`
+ * instead of failing the whole call. The text is in the storefront's language (`country`).
+ */
+async function addSubtitles(apps: App[], country: string, requestOptions?: RequestOptions): Promise<void> {
+  const store = country.toLowerCase();
+  for (let i = 0; i < apps.length; i += CATALOG_MAX_IDS) {
+    const chunk = apps.slice(i, i + CATALOG_MAX_IDS);
+    const ids = chunk.map((a) => a.id).join(',');
+    // additionalPlatforms makes Apple include platformAttributes; `platform=iphone` alone would drop Mac-only apps.
+    const url = `${CATALOG_URL}/${store}/apps?ids=${ids}&platform=web&additionalPlatforms=iphone,mac`;
+    try {
+      const body = await defaultClient.request(url, {}, withCountryRequestOptions(requestOptions, store));
+      const byId = new Map<string, any>(
+        (JSON.parse(body)?.data ?? []).map((d: any) => [String(d.id), d.attributes?.platformAttributes]),
+      );
+      for (const app of chunk) {
+        const platforms = byId.get(String(app.id));
+        const text = platforms?.ios?.subtitle ?? platforms?.osx?.subtitle;
+        if (text) app.subtitle = text;
+      }
+    } catch {
+      // ponytail: silent best effort, like the screenshot fallback; surface errors if callers ask for it
+    }
+  }
 }
 
 export function storeId(countryCode?: string): string {

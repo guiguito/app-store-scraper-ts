@@ -17,6 +17,12 @@ export interface AppLite {
 }
 
 export interface App extends AppLite {
+  /**
+   * The short tagline under the app name on the App Store (30 characters max), e.g. "Spanish, French, Chess & Math".
+   * Only set when the call passes `subtitle: true`, and only when the app has one (many don't).
+   * Not the first line of `description`. iOS subtitle, or the Mac one for Mac-only apps.
+   */
+  subtitle?: string;
   genres?: string[];
   genreIds?: string[];
   primaryGenre?: string;
