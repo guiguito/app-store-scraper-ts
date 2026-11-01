@@ -500,7 +500,7 @@ interface VersionHistoryItem {
 ## HTTP, Retry, Proxy
 - Exponential backoff with jitter and `Retry-After` support on 429/5xx.
 - Per-call `requestOptions` allow overriding `method`, `headers`, `body`, `timeoutMs`.
-- Proxy support via `HTTPS_PROXY`/`HTTP_PROXY` (undici `ProxyAgent` when available).
+- Proxy support via `HTTPS_PROXY`/`HTTP_PROXY` (lowercase `https_proxy`/`http_proxy` also honored), using undici `ProxyAgent`.
 - Per-call `throttle` caps requests per second through the HTTP client's rate limiter.
 
 ---

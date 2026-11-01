@@ -25,7 +25,8 @@ const setProxyUsageListener = hasProxyHelpers ? store.setProxyUsageListener : ()
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
-const envProxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';
+const envProxyUrl =
+  process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy || '';
 
 let proxyState = {
   proxies: [],
@@ -296,6 +297,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+// Loopback only: /api/system/proxy exposes proxy credentials and lets callers reroute traffic.
+server.listen(PORT, '127.0.0.1', () => {
   console.log(`UI Test server running at http://localhost:${PORT}`);
 });

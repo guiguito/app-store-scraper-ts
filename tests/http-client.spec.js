@@ -166,3 +166,27 @@ describe('HttpClient retries', () => {
     expect(calls).to.equal(3);
   });
 });
+
+describe('HttpClient env proxies', () => {
+  const keys = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy'];
+  let saved;
+  beforeEach(() => {
+    saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+    keys.forEach((k) => delete process.env[k]);
+  });
+  afterEach(() => keys.forEach((k) => (saved[k] === undefined ? delete process.env[k] : (process.env[k] = saved[k]))));
+
+  it('honors lowercase https_proxy / http_proxy', () => {
+    process.env.https_proxy = 'http://lower.local:3128';
+    expect(new HttpClient().getProxyConfig().host).to.equal('lower.local');
+    delete process.env.https_proxy;
+    process.env.http_proxy = 'http://plain.local:8080';
+    expect(new HttpClient().getProxyConfig().host).to.equal('plain.local');
+  });
+
+  it('prefers HTTPS_PROXY over lowercase variants', () => {
+    process.env.HTTPS_PROXY = 'http://upper.local:3128';
+    process.env.https_proxy = 'http://lower.local:3128';
+    expect(new HttpClient().getProxyConfig().host).to.equal('upper.local');
+  });
+});

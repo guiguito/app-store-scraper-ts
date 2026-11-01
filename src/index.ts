@@ -48,7 +48,8 @@ function memoize<T extends AnyFn>(fn: T, opts: { maxAge?: number; max?: number }
 
 export function memoized(opts?: { maxAge?: number; max?: number }) {
   return {
-    ...require('./constants'),
+    ...require('./constants'), // kept for existing `store.collection` users
+    constants: require('./constants'), // same shape as the main export
     app: memoize(require('./modules/app').app, opts),
     ratings: memoize(require('./modules/ratings').ratings, opts),
     list: memoize(require('./modules/list').list, opts),

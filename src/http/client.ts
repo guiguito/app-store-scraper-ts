@@ -175,6 +175,12 @@ async function createProxyDispatcher(config: NormalizedProxyConfig): Promise<Pro
   }
 }
 
+// Lowercase variants are the usual convention on Linux (curl, wget, most CLIs).
+function envProxyUrl(): string | undefined {
+  const env = process.env;
+  return env.HTTPS_PROXY || env.https_proxy || env.HTTP_PROXY || env.http_proxy || undefined;
+}
+
 export interface RetryOptions {
   retries?: number; // total attempts including the first
   minDelayMs?: number;
@@ -215,7 +221,7 @@ export class HttpClient {
       const configured = normalizeProxy(opts.proxy ?? opts.proxyUrl, opts.rejectUnauthorized);
       if (configured) this.proxyConfig = configured;
       else {
-        const envProxy = process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY;
+        const envProxy = envProxyUrl();
         this.proxyConfig = normalizeProxy(envProxy, opts.rejectUnauthorized);
       }
     }
@@ -274,7 +280,7 @@ export class HttpClient {
       return;
     }
     if (typeof proxy === 'undefined') {
-      const envProxy = process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY;
+      const envProxy = envProxyUrl();
       this.proxyConfig = normalizeProxy(envProxy, rejectUnauthorized);
     } else {
       this.proxyConfig = normalizeProxy(proxy, rejectUnauthorized) ?? undefined;

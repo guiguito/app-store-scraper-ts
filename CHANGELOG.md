@@ -13,6 +13,11 @@
 - fix(app): don't mutate the caller's options when `ratings: true` is used with `appId`.
 - fix(app): only scrape apps.apple.com for screenshots when lookup returned no iPhone screenshots (previously every iPhone-only and Mac app paid an extra request).
 - feat: `throttle` is now applied (max requests per second) for app, list, search, developer and similar.
+- fix(ratings): parse totals with thousands separators ("4,037,246", "429 205", "271.603"); any app with 1,000+ ratings reported a truncated total.
+- fix(memoized): expose `constants` like the main export (top-level constants kept for compatibility).
+- fix(proxy): honor lowercase `https_proxy` / `http_proxy`.
+- fix(ui): bind the test harness to 127.0.0.1; it exposed proxy credentials and proxy reconfiguration to the local network.
+- test(similar): convert the never-run `similar.spec.ts` to JS so it runs in the suite.
 
 ## 0.2.0 - 2025-09-28
 

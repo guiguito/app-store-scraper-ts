@@ -181,3 +181,20 @@ describe('app: side effects and extra requests', () => {
     expect(opts).to.deep.equal({ appId: 'com.king.candy', ratings: true });
   });
 });
+
+describe('ratings: totals with thousands separators', () => {
+  afterEach(() => resetFetch());
+
+  // Real formats from the us, fr (U+202F narrow no-break space) and de storefronts.
+  for (const [label, text, expected] of [
+    ['us', '4,037,246 Ratings', 4037246],
+    ['fr', '429 205 notes', 429205],
+    ['de', '271.603 Bewertungen', 271603],
+  ]) {
+    it(`parses "${label}" format`, async () => {
+      __setFetchForTests(mockFetch(() => ({ body: `<div class="rating-count">${text}</div>` })));
+      const res = await ratings({ id: '1' });
+      expect(res.ratings).to.equal(expected);
+    });
+  }
+});

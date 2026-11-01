@@ -53,3 +53,12 @@ describe('memoized: failures are not cached', () => {
     expect(lookups).to.equal(2);
   });
 });
+
+describe('memoized: API shape', () => {
+  it('exposes `constants` like the main export (and keeps top-level constants)', () => {
+    const { constants } = require('../dist/cjs');
+    const store = memoized();
+    expect(store.constants.collection.TOP_FREE_IOS).to.equal(constants.collection.TOP_FREE_IOS);
+    expect(store.collection.TOP_FREE_IOS).to.equal(constants.collection.TOP_FREE_IOS);
+  });
+});

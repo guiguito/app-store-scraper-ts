@@ -30,8 +30,8 @@ export async function ratings(opts: RatingsOptions): Promise<{ ratings: number; 
   }
 
   const $ = cheerio.load(html);
-  const ratingsMatch = $('.rating-count').text().match(/\d+/);
-  const total = Array.isArray(ratingsMatch) ? parseInt(ratingsMatch[0], 10) : 0;
+  // "4,037,246 Ratings" / "429 205 notes" / "271.603 Bewertungen": drop the locale's thousands separators.
+  const total = parseInt($('.rating-count').text().replace(/\D/g, ''), 10) || 0;
   const ratingsByStar = $('.vote .total')
     .map((i, el) => parseInt($(el).text(), 10))
     .get();

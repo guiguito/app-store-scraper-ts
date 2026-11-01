@@ -9,6 +9,7 @@ How to run
 
 Notes
 - The UI server calls the library on the server side to avoid browser CORS issues against Apple endpoints.
-- Set `HTTP_PROXY`/`HTTPS_PROXY` if you need an outbound proxy; throttling and retries are enabled server-side.
+- Set `HTTP_PROXY`/`HTTPS_PROXY` (or lowercase) if you need an outbound proxy; throttling and retries are enabled server-side.
+- The server listens on `127.0.0.1` only: its proxy endpoint exposes proxy credentials and can reroute traffic.
 - The `ui-test/` directory is git-ignored and is not published.
 
