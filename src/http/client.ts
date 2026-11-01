@@ -1,3 +1,4 @@
+import type { Dispatcher, ProxyAgent } from 'undici';
 import { HttpError } from '../errors';
 
 export interface ProxyOptions {
@@ -28,10 +29,10 @@ type ProxyUsageListener = (event: ProxyUsageEvent) => void;
 
 let proxyUsageListener: ProxyUsageListener | undefined;
 
-type ProxyAgentFactoryResult = { dispatcher?: any; reason?: string; error?: unknown };
+type ProxyAgentFactoryResult = { dispatcher?: Dispatcher; reason?: string; error?: unknown };
 type ProxyAgentFactory = (
   config: NormalizedProxyConfig,
-  options: Record<string, any>,
+  options: ProxyAgent.Options,
 ) => Promise<ProxyAgentFactoryResult> | ProxyAgentFactoryResult;
 
 let proxyAgentFactory: ProxyAgentFactory | undefined;
@@ -47,7 +48,7 @@ export function __setProxyAgentFactoryForTests(factory?: ProxyAgentFactory) {
 export interface RequestOptions {
   method?: string;
   headers?: Record<string, string>;
-  body?: any;
+  body?: RequestInit['body'];
   // custom timeout in ms
   timeoutMs?: number;
   proxy?: ProxyInput | false;
@@ -121,7 +122,7 @@ interface NormalizedProxyConfig {
 }
 
 interface ProxyDispatcherResult {
-  dispatcher?: any;
+  dispatcher?: Dispatcher;
   error?: unknown;
   reason?: string;
 }
@@ -166,25 +167,21 @@ function buildProxyKey(config: NormalizedProxyConfig): string {
 }
 
 async function createProxyDispatcher(config: NormalizedProxyConfig): Promise<ProxyDispatcherResult> {
-  const options: any = { uri: config.url };
+  const options: ProxyAgent.Options = { uri: config.url };
   if (typeof config.rejectUnauthorized !== 'undefined') {
-    options.requestTls = { ...(options.requestTls || {}), rejectUnauthorized: config.rejectUnauthorized };
+    options.requestTls = { rejectUnauthorized: config.rejectUnauthorized };
     if (config.protocol === 'https') {
-      options.proxyTls = { ...(options.proxyTls || {}), rejectUnauthorized: config.rejectUnauthorized };
+      options.proxyTls = { rejectUnauthorized: config.rejectUnauthorized };
     }
   }
   try {
     if (proxyAgentFactory) {
       return await proxyAgentFactory(config, options);
     }
-    const undici = await import('undici');
-    const ProxyAgent = (undici as any).ProxyAgent;
-    if (!ProxyAgent) {
-      return { reason: 'ProxyAgent unavailable' };
-    }
+    const { ProxyAgent } = await import('undici');
     return { dispatcher: new ProxyAgent(options) };
-  } catch (error: any) {
-    return { error, reason: error?.message };
+  } catch (error) {
+    return { error, reason: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -218,7 +215,7 @@ export class HttpClient {
   // undefined = pick automatically (global fetch direct, undici's fetch when proxying)
   private fetchImpl?: FetchLike;
   private proxyConfig?: NormalizedProxyConfig;
-  private proxyDispatchers: Map<string, any> = new Map();
+  private proxyDispatchers = new Map<string, Dispatcher>();
   private countryProxyMap?: Map<string, NormalizedProxyConfig>;
 
   constructor(opts: ClientOptions = {}) {
@@ -366,7 +363,7 @@ export class HttpClient {
       };
 
       try {
-        let dispatcher: any = undefined;
+        let dispatcher: Dispatcher | undefined;
         const proxyConfig = this.resolveProxyConfig(requestOptions);
         if (proxyConfig) {
           const result = await this.getProxyDispatcher(proxyConfig);
@@ -406,19 +403,11 @@ export class HttpClient {
         // Non-2xx handling similar to reference (reject with response)
         if (!res.ok) {
           const headersObj: Record<string, string> = {};
-          try {
-            // Headers may not be iterable across environments; guard accordingly
-            for (const [k, v] of (res.headers as any) || []) headersObj[k.toLowerCase?.() || k] = String(v);
-          } catch {
-            try {
-              const h = (res.headers as any);
-              if (h?.forEach) h.forEach((v: any, k: any) => (headersObj[String(k).toLowerCase()] = String(v)));
-            } catch {}
-          }
+          res.headers?.forEach((v, k) => (headersObj[k.toLowerCase()] = v));
           throw new HttpError(res.status, undefined, headersObj);
         }
         return await res.text();
-      } catch (err: any) {
+      } catch (err) {
         if (typeof usageEvent.error === 'undefined') usageEvent.error = err;
         throw err;
       } finally {
@@ -446,15 +435,16 @@ export class HttpClient {
   }
 
   // ms to wait before the next attempt, or undefined when the error is final.
-  private retryDelay(err: any, attemptNo: number): number | undefined {
+  private retryDelay(err: unknown, attemptNo: number): number | undefined {
     if (attemptNo >= this.retry.retries - 1) return undefined;
-    const status = err?.response?.statusCode ?? err?.statusCode;
+    const e = err as Partial<HttpError> | undefined; // HttpError, or whatever fetch rejected with
+    const status = e?.response?.statusCode ?? e?.statusCode ?? 0;
     // fetch rejects with TypeError on network failures (ECONNRESET, DNS, socket closed).
     const isRetryable =
-      status === 429 || (status >= 500 && status < 600) || err?.name === 'AbortError' || err?.name === 'TypeError';
+      status === 429 || (status >= 500 && status < 600) || e?.name === 'AbortError' || e?.name === 'TypeError';
     if (!isRetryable) return undefined;
     let retryAfterMs: number | undefined;
-    const ra = err?.response?.headers?.['retry-after'];
+    const ra = e?.response?.headers?.['retry-after'];
     if (ra) {
       const secs = Number(ra);
       if (!Number.isNaN(secs)) retryAfterMs = secs * 1000;

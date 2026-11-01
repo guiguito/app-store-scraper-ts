@@ -3,6 +3,7 @@ import { defaultClient } from '../http/client';
 import type { RequestOptions } from '../http/client';
 import type { Review } from '../types';
 import { ensureArray, lookup } from '../common';
+import type { AppleJson } from '../common';
 import { sort as SORT } from '../constants';
 import { withCountryRequestOptions } from '../utils/request-options';
 
@@ -45,7 +46,7 @@ export async function reviews(opts: ReviewsOptions): Promise<Review[]> {
   const json = await defaultClient.request(url, {}, requestOptions);
   const parsed = JSON.parse(json);
   const list = ensureArray(parsed?.feed?.entry);
-  return list.map((review: any) => ({
+  return list.map((review: AppleJson) => ({
     id: review.id?.label,
     userName: review.author?.name?.label,
     userUrl: review.author?.uri?.label,

@@ -1,6 +1,7 @@
 import { ValidationError } from '../errors';
 import type { RequestOptions } from '../http/client';
 import { catalogApp } from '../common';
+import type { AppleJson } from '../common';
 import type { InAppPurchase } from '../types';
 
 export interface InAppPurchasesOptions {
@@ -9,7 +10,7 @@ export interface InAppPurchasesOptions {
   requestOptions?: RequestOptions;
 }
 
-function cleanInAppPurchase(iap: any): InAppPurchase {
+function cleanInAppPurchase(iap: AppleJson): InAppPurchase {
   const a = iap.attributes ?? {};
   const offer = a.offers?.[0] ?? {};
   return {

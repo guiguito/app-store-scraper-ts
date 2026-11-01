@@ -2,6 +2,7 @@ import { ValidationError } from '../errors';
 import { defaultClient } from '../http/client';
 import type { RequestOptions } from '../http/client';
 import { storeId, lookup } from '../common';
+import type { AppleJson } from '../common';
 import type { App } from '../types';
 import { withCountryRequestOptions } from '../utils/request-options';
 
@@ -44,7 +45,7 @@ export async function search(opts: SearchOptions): Promise<App[] | Array<string 
     requestOptions,
   );
   const parsed = JSON.parse(json);
-  const results: Array<string | number> = (parsed?.bubbles?.[0]?.results ?? []).map((r: any) => r.id);
+  const results: Array<string | number> = (parsed?.bubbles?.[0]?.results ?? []).map((r: AppleJson) => r.id);
   const windowed: Array<string | number> = paginate(results, opts.num || 50, opts.page || 1);
   if (opts.idsOnly) return windowed;
   return lookup(windowed, 'id', country, opts.lang, requestOptions, opts.subtitle);

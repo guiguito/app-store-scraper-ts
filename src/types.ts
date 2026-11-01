@@ -1,3 +1,5 @@
+import type { RequestOptions } from './http/client';
+
 export interface AppLite {
   id: string | number;
   appId: string;
@@ -121,7 +123,7 @@ export interface VersionHistoryItem {
 export interface BaseOptions {
   country?: string;
   lang?: string;
-  requestOptions?: { method?: string; headers?: Record<string, string>; body?: any; };
+  requestOptions?: RequestOptions;
   throttle?: number; // requests per second
 }
 

@@ -8,7 +8,7 @@ const parser = new XMLParser({
   parseTagValue: false,
 });
 
-export function parseXml<T = any>(xml: string): T {
+export function parseXml<T = unknown>(xml: string): T {
   return parser.parse(xml) as T;
 }
 

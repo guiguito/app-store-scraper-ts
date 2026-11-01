@@ -1,5 +1,6 @@
 import type { RequestOptions } from '../http/client';
 import { catalogAppAttributes } from '../common';
+import type { AppleJson } from '../common';
 import type { App } from '../types';
 
 type Shot = { url: string; width: number; height: number };
@@ -19,7 +20,7 @@ export async function getScreenshotsWithFallback(
   country = 'us',
   requestOptions?: RequestOptions,
 ): Promise<App> {
-  let attributes: any;
+  let attributes: AppleJson;
   try {
     attributes = await catalogAppAttributes(
       appId,
@@ -32,7 +33,7 @@ export async function getScreenshotsWithFallback(
   }
   const byType: Record<string, Shot[]> = Object.assign(
     {},
-    ...Object.values<any>(attributes.platformAttributes ?? {}).map((p) => p?.screenshotsByType ?? {}),
+    ...Object.values<AppleJson>(attributes.platformAttributes ?? {}).map((p) => p?.screenshotsByType ?? {}),
   );
   const result: App = { ...appData };
   for (const [field, prefix] of Object.entries(FIELD_PREFIX) as Array<[ShotField, string]>) {
