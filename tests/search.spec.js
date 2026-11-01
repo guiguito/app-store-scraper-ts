@@ -87,6 +87,27 @@ describe('search: throttle', () => {
     const res = await search({ term: 'x', throttle: 1 });
     expect(res).to.have.length(1);
     expect(starts).to.have.length(2);
-    expect(starts[1] - starts[0]).to.be.at.least(900); // the lookup waits for the next 1s window
+    expect(starts[1] - starts[0]).to.be.at.least(900); // throttle 1 = starts spaced 1000ms apart
+  });
+});
+
+// Moved from the former contract tests: the only checks there not covered elsewhere.
+describe('search: options reach every request', () => {
+  afterEach(() => resetFetch());
+
+  it('passes country to the lookup', async () => {
+    const countries = [];
+    __setFetchForTests(mockFetch((url) => {
+      if (url.includes('/wa/search?')) return { body: makeBubbles(['100']) };
+      countries.push(new URL(url).searchParams.get('country'));
+      return { body: makeLookup(['100']) };
+    }));
+    await search({ country: 'fr', term: 'Panda' });
+    expect(countries).to.deep.equal(['fr']);
+  });
+
+  it('forwards requestOptions to the HTTP layer', async () => {
+    __setFetchForTests(mockFetch((_url, init) => (init.method === 'DELETE' ? { status: 501 } : { body: makeBubbles(['1']) })));
+    await search({ term: 'vr', requestOptions: { method: 'DELETE' } }).then(() => { throw new Error('should fail'); }, (e) => expect(e.statusCode).to.equal(501));
   });
 });
