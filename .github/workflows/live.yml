@@ -1,0 +1,25 @@
+name: Live
+
+# Hits Apple's real endpoints, so it catches page/API changes the stubbed suite can't.
+# Separate from CI and not required: Apple can rate-limit runner IPs.
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC
+  workflow_dispatch:
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build:cjs
+      - run: node node_modules/mocha/bin/mocha tests/integration/live.spec.js
+        env:
+          INTEGRATION: '1'
