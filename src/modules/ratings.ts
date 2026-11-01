@@ -1,17 +1,18 @@
-import { defaultClient } from '../http/client';
-import { storeId } from '../common';
+import { NotFoundError, ValidationError } from '../errors';
+import type { RequestOptions } from '../http/client';
+import { requestApp, storeId } from '../common';
+import type { Ratings } from '../types';
 import * as cheerio from 'cheerio';
 import { withCountryRequestOptions } from '../utils/request-options';
 
 export interface RatingsOptions {
   id: string | number;
   country?: string;
-  requestOptions?: any;
+  requestOptions?: RequestOptions;
 }
 
-export async function ratings(opts: RatingsOptions): Promise<{ ratings: number; histogram: Record<string, number> }> {
+export async function ratings(opts: RatingsOptions): Promise<Ratings> {
   if (!opts?.id) {
-    const { ValidationError } = await import('../errors');
     throw new ValidationError('id is required');
   }
   const country = opts.country || 'us';
@@ -19,13 +20,12 @@ export async function ratings(opts: RatingsOptions): Promise<{ ratings: number; 
   const idValue = String(opts.id);
   const url = `https://itunes.apple.com/${country}/customer-reviews/id${idValue}?displayable-kind=11`;
   const requestOptions = withCountryRequestOptions(opts.requestOptions, country);
-  const html = await defaultClient.request(
+  const html = await requestApp(
     url,
     { 'X-Apple-Store-Front': `${storefront},12` },
     requestOptions,
   );
   if (!html || html.length === 0) {
-    const { NotFoundError } = await import('../errors');
     throw new NotFoundError('App not found (404)');
   }
 

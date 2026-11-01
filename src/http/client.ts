@@ -1,3 +1,5 @@
+import { HttpError } from '../errors';
+
 export interface ProxyOptions {
   url: string;
   rejectUnauthorized?: boolean;
@@ -57,44 +59,33 @@ export interface RequestOptions {
 
 type FetchLike = typeof fetch;
 
+// Spaces request starts 1000/rps ms apart, so fractional rates (0.5 = one every 2s) work and nothing
+// runs in the background. ponytail: no bursting; a token bucket if callers ever need bursts.
 class RateLimiter {
-  private readonly requestsPerWindow: number;
-  private readonly windowMs: number;
-  private queue: Array<() => void> = [];
-  private tokens: number;
-  private lastRefill: number;
+  private nextStart = 0;
 
-  constructor(requestsPerWindow = 0, windowMs = 1000) {
-    this.requestsPerWindow = Math.max(0, requestsPerWindow);
-    this.windowMs = windowMs;
-    this.tokens = this.requestsPerWindow;
-    this.lastRefill = Date.now();
-    if (this.requestsPerWindow > 0) this.scheduleRefill();
-  }
-
-  private scheduleRefill() {
-    setInterval(() => {
-      this.tokens = this.requestsPerWindow;
-      this.drain();
-    }, this.windowMs).unref?.();
-  }
-
-  private drain() {
-    while (this.tokens > 0 && this.queue.length > 0) {
-      this.tokens--;
-      const fn = this.queue.shift()!;
-      fn();
-    }
-  }
+  constructor(private readonly rps = 0) {}
 
   run<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.requestsPerWindow <= 0) return fn();
-    return new Promise<T>((resolve, reject) => {
-      const task = () => fn().then(resolve, reject);
-      this.queue.push(task);
-      this.drain();
-    });
+    if (!(this.rps > 0)) return fn();
+    const now = Date.now();
+    const start = Math.max(now, this.nextStart);
+    this.nextStart = start + 1000 / this.rps;
+    if (start === now) return fn();
+    return new Promise((resolve) => setTimeout(resolve, start - now)).then(fn);
   }
+}
+
+// Case-insensitive merge: later sources win, so `X-Foo` from requestOptions replaces `x-foo` set internally.
+function mergeHeaders(...sources: Array<Record<string, string> | undefined>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const source of sources) {
+    for (const [key, value] of Object.entries(source ?? {})) {
+      for (const existing of Object.keys(out)) if (existing.toLowerCase() === key.toLowerCase()) delete out[existing];
+      out[key] = value;
+    }
+  }
+  return out;
 }
 
 interface NormalizedProxyConfig {
@@ -202,19 +193,20 @@ export class HttpClient {
   private limiter: RateLimiter;
   private throttles = new Map<number, RateLimiter>();
   private retry: Required<RetryOptions>;
-  private fetchImpl: FetchLike;
+  // undefined = pick automatically (global fetch direct, undici's fetch when proxying)
+  private fetchImpl?: FetchLike;
   private proxyConfig?: NormalizedProxyConfig;
   private proxyDispatchers: Map<string, any> = new Map();
   private countryProxyMap?: Map<string, NormalizedProxyConfig>;
 
   constructor(opts: ClientOptions = {}) {
-    this.limiter = new RateLimiter(opts.limiterRps ?? 0, 1000);
+    this.limiter = new RateLimiter(opts.limiterRps ?? 0);
     this.retry = {
       retries: opts.retry?.retries ?? 3,
       minDelayMs: opts.retry?.minDelayMs ?? 250,
       maxDelayMs: opts.retry?.maxDelayMs ?? 2500,
     };
-    this.fetchImpl = opts.fetchImpl ?? fetch;
+    this.fetchImpl = opts.fetchImpl;
     if (opts.proxy === false) {
       this.proxyConfig = undefined;
     } else {
@@ -269,7 +261,7 @@ export class HttpClient {
     return { ...result, config };
   }
 
-  setFetchImpl(fetchImpl: FetchLike) {
+  setFetchImpl(fetchImpl?: FetchLike) {
     this.fetchImpl = fetchImpl;
   }
 
@@ -333,9 +325,10 @@ export class HttpClient {
 
   async request(url: string, headers: Record<string, string> = {}, requestOptions: RequestOptions = {}): Promise<string> {
     const method = requestOptions.method ?? 'GET';
-    const mergedHeaders = { ...(requestOptions.headers || {}), ...headers };
+    const mergedHeaders = mergeHeaders(headers, requestOptions.headers);
 
-    const attempt = async (attemptNo: number): Promise<string> => {
+    // One try; its timer and usage event are settled before any retry starts.
+    const attempt = async (): Promise<string> => {
       const controller = new AbortController();
       const timeout = requestOptions.timeoutMs ? setTimeout(() => controller.abort(), requestOptions.timeoutMs) : undefined;
 
@@ -374,7 +367,10 @@ export class HttpClient {
           usageEvent.reason = 'proxy-disabled';
         }
 
-        const res = await this.fetchImpl(url, {
+        // The ProxyAgent comes from the `undici` package, so it must go with that package's fetch:
+        // Node's built-in fetch bundles its own undici and rejects foreign agents on Node 26+.
+        const fetchFn = this.fetchImpl ?? (dispatcher ? ((await import('undici')).fetch as unknown as FetchLike) : fetch);
+        const res = await fetchFn(url, {
           method,
           headers: mergedHeaders,
           body: requestOptions.body,
@@ -395,35 +391,12 @@ export class HttpClient {
               if (h?.forEach) h.forEach((v: any, k: any) => (headersObj[String(k).toLowerCase()] = String(v)));
             } catch {}
           }
-          const { HttpError } = await import('../errors');
           throw new HttpError(res.status, undefined, headersObj);
         }
         return await res.text();
       } catch (err: any) {
         if (typeof usageEvent.error === 'undefined') usageEvent.error = err;
-        const status = err?.response?.statusCode ?? err?.statusCode;
-        // fetch rejects with TypeError on network failures (ECONNRESET, DNS, socket closed).
-        const isNetworkError = err?.name === 'TypeError';
-        const isRetryable =
-          status === 429 || (status >= 500 && status < 600) || err?.name === 'AbortError' || isNetworkError;
-        if (attemptNo >= (this.retry.retries - 1) || !isRetryable) throw err;
-        // Honor Retry-After header when present
-        let retryAfterMs: number | undefined;
-        const headers: Record<string, string> | undefined = err?.response?.headers;
-        const ra = headers?.['retry-after'] || headers?.['Retry-After'];
-        if (ra) {
-          const secs = Number(ra);
-          if (!Number.isNaN(secs)) retryAfterMs = secs * 1000;
-          else {
-            const until = Date.parse(ra);
-            if (!Number.isNaN(until)) retryAfterMs = Math.max(0, until - Date.now());
-          }
-        }
-        const jitter = Math.floor(Math.random() * 100);
-        const expBackoff = this.retry.minDelayMs * Math.pow(2, attemptNo) + jitter;
-        const backoff = Math.min(this.retry.maxDelayMs, retryAfterMs ?? expBackoff);
-        await new Promise((r) => setTimeout(r, backoff));
-        return attempt(attemptNo + 1);
+        throw err;
       } finally {
         if (timeout) clearTimeout(timeout);
         proxyUsageListener?.({ ...usageEvent });
@@ -431,10 +404,43 @@ export class HttpClient {
     };
 
     const rps = requestOptions.throttle;
-    if (!rps || rps <= 0) return this.limiter.run(() => attempt(0));
-    let throttle = this.throttles.get(rps);
-    if (!throttle) this.throttles.set(rps, (throttle = new RateLimiter(rps, 1000)));
-    return throttle.run(() => attempt(0));
+    let limiter = this.limiter;
+    if (rps && rps > 0) {
+      limiter = this.throttles.get(rps) ?? new RateLimiter(rps);
+      this.throttles.set(rps, limiter);
+    }
+    // Every attempt, retries included, goes through the limiter.
+    for (let attemptNo = 0; ; attemptNo++) {
+      try {
+        return await limiter.run(attempt);
+      } catch (err) {
+        const delay = this.retryDelay(err, attemptNo);
+        if (delay === undefined) throw err;
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+
+  // ms to wait before the next attempt, or undefined when the error is final.
+  private retryDelay(err: any, attemptNo: number): number | undefined {
+    if (attemptNo >= this.retry.retries - 1) return undefined;
+    const status = err?.response?.statusCode ?? err?.statusCode;
+    // fetch rejects with TypeError on network failures (ECONNRESET, DNS, socket closed).
+    const isRetryable =
+      status === 429 || (status >= 500 && status < 600) || err?.name === 'AbortError' || err?.name === 'TypeError';
+    if (!isRetryable) return undefined;
+    let retryAfterMs: number | undefined;
+    const ra = err?.response?.headers?.['retry-after'];
+    if (ra) {
+      const secs = Number(ra);
+      if (!Number.isNaN(secs)) retryAfterMs = secs * 1000;
+      else {
+        const until = Date.parse(ra);
+        if (!Number.isNaN(until)) retryAfterMs = Math.max(0, until - Date.now());
+      }
+    }
+    const expBackoff = this.retry.minDelayMs * Math.pow(2, attemptNo) + Math.floor(Math.random() * 100);
+    return Math.min(this.retry.maxDelayMs, retryAfterMs ?? expBackoff);
   }
 }
 
@@ -460,6 +466,6 @@ export function getCountryProxyMap(): Record<string, ProxyUsageEvent['proxy']> {
 }
 
 // Testing hook
-export function __setFetchForTests(fetchImpl: FetchLike) {
+export function __setFetchForTests(fetchImpl?: FetchLike) {
   defaultClient.setFetchImpl(fetchImpl);
 }

@@ -1,6 +1,6 @@
 const { expect } = require('chai');
 const { search } = require('../dist/cjs');
-const { __setFetchForTests } = require('../dist/cjs/http/client');
+const { __setFetchForTests, setProxyUsageListener } = require('../dist/cjs/http/client');
 const { mockFetch, resetFetch } = require('./helpers');
 
 function makeBubbles(ids) {
@@ -61,6 +61,18 @@ describe('M2: search', () => {
   });
 });
 
+
+describe('search: proxy country', () => {
+  afterEach(() => { resetFetch(); setProxyUsageListener(); });
+
+  it('tags every request with the US storefront when no country is given', async () => {
+    const countries = [];
+    setProxyUsageListener((e) => countries.push(e.country));
+    __setFetchForTests(mockFetch((url) => (url.includes('/wa/search?') ? { body: makeBubbles(['1']) } : { body: makeLookup(['1']) })));
+    await search({ term: 'x' });
+    expect(countries).to.deep.equal(['US', 'US']);
+  });
+});
 
 describe('search: throttle', () => {
   afterEach(() => resetFetch());

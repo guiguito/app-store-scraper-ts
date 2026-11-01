@@ -5,6 +5,8 @@ npm-debug.log*
 # Build output
 dist/
 coverage/
+.nyc_output/
+docs/
 
 # IDE
 .vscode/
@@ -19,4 +21,3 @@ coverage/
 
 # Reference (do not publish or commit)
 reference/
-doc/

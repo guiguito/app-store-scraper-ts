@@ -1,7 +1,7 @@
 import { defaultClient } from './http/client';
 import type { RequestOptions } from './http/client';
 import { markets } from './constants';
-import { NotFoundError } from './errors';
+import { HttpError, NotFoundError } from './errors';
 import type { App } from './types';
 import { withCountryRequestOptions } from './utils/request-options';
 
@@ -66,7 +66,7 @@ export async function lookup(
   idField: 'id' | 'bundleId' = 'id',
   country = 'us',
   lang?: string,
-  requestOptions?: any,
+  requestOptions?: RequestOptions,
 ): Promise<App[]> {
   const langParam = lang ? `&lang=${encodeURIComponent(lang)}` : '';
   const joinedIds = ids.join(',');
@@ -83,6 +83,20 @@ export async function lookup(
   return softwareOnly.map(cleanApp);
 }
 
+// For endpoints addressed by app id, where Apple answers 404 when the id is unknown.
+export async function requestApp(
+  url: string,
+  headers: Record<string, string>,
+  requestOptions?: RequestOptions,
+): Promise<string> {
+  try {
+    return await defaultClient.request(url, headers, requestOptions);
+  } catch (err) {
+    if (err instanceof HttpError && err.statusCode === 404) throw new NotFoundError('App not found (404)');
+    throw err;
+  }
+}
+
 // Same JSON as amp-api.apps.apple.com, served by apps.apple.com's own proxy without a bearer token.
 const CATALOG_URL = 'https://apps.apple.com/api/apps/v1/catalog';
 
@@ -94,7 +108,7 @@ export async function catalogAppAttributes(
 ): Promise<any> {
   const store = (country || 'us').toLowerCase();
   const url = `${CATALOG_URL}/${store}/apps/${encodeURIComponent(String(id))}?platform=web&${query}`;
-  const body = await defaultClient.request(url, {}, withCountryRequestOptions(requestOptions, store));
+  const body = await requestApp(url, {}, withCountryRequestOptions(requestOptions, store));
   const attributes = body ? JSON.parse(body)?.data?.[0]?.attributes : undefined;
   if (!attributes) throw new NotFoundError('App not found (404)');
   return attributes;

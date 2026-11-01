@@ -1,3 +1,7 @@
+import { NotFoundError, ValidationError } from '../errors';
+import { defaultClient } from '../http/client';
+import type { RequestOptions } from '../http/client';
+import type { Review } from '../types';
 import { ensureArray, lookup } from '../common';
 import { sort as SORT } from '../constants';
 import { withCountryRequestOptions } from '../utils/request-options';
@@ -8,24 +12,20 @@ export interface ReviewsOptions {
   sort?: typeof SORT[keyof typeof SORT];
   page?: number;
   country?: string;
-  requestOptions?: any;
+  requestOptions?: RequestOptions;
 }
 
-export async function reviews(opts: ReviewsOptions) {
+export async function reviews(opts: ReviewsOptions): Promise<Review[]> {
   if (!opts?.id && !opts?.appId) {
-    const { ValidationError } = await import('../errors');
     throw new ValidationError('Either id or appId is required');
   }
   if (opts.sort && !Object.values(SORT).includes(opts.sort)) {
-    const { ValidationError } = await import('../errors');
     throw new ValidationError('Invalid sort ' + opts.sort);
   }
   if (opts.page && opts.page < 1) {
-    const { ValidationError } = await import('../errors');
     throw new ValidationError('Page cannot be lower than 1');
   }
   if (opts.page && opts.page > 10) {
-    const { ValidationError } = await import('../errors');
     throw new ValidationError('Page cannot be greater than 10');
   }
 
@@ -37,13 +37,11 @@ export async function reviews(opts: ReviewsOptions) {
   if (!id) {
     const [found] = await lookup([opts.appId!], 'bundleId', country, undefined, requestOptions);
     if (!found) {
-      const { NotFoundError } = await import('../errors');
       throw new NotFoundError('App not found (404)');
     }
     id = found.id;
   }
   const url = `https://itunes.apple.com/${country}/rss/customerreviews/page=${page}/id=${id}/sortby=${sort}/json`;
-  const { defaultClient } = await import('../http/client');
   const json = await defaultClient.request(url, {}, requestOptions);
   const parsed = JSON.parse(json);
   const list = ensureArray(parsed?.feed?.entry);

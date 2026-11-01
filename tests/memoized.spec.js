@@ -54,6 +54,43 @@ describe('memoized: failures are not cached', () => {
   });
 });
 
+describe('memoized: expiry and eviction', () => {
+  afterEach(() => resetFetch());
+
+  function countingLookup() {
+    const counter = { lookups: 0 };
+    __setFetchForTests(mockFetch((url) => {
+      counter.lookups += 1;
+      const id = new URL(url).searchParams.get('id');
+      return { body: JSON.stringify({ results: [ { trackId: Number(id), trackName: id, screenshotUrls: ['s'] } ] }) };
+    }));
+    return counter;
+  }
+
+  it('refetches once maxAge has passed', async () => {
+    const counter = countingLookup();
+    const store = memoized({ maxAge: 30 });
+    await store.app({ id: '1' });
+    await store.app({ id: '1' });
+    expect(counter.lookups).to.equal(1);
+    await new Promise((r) => setTimeout(r, 40));
+    await store.app({ id: '1' });
+    expect(counter.lookups).to.equal(2);
+  });
+
+  it('evicts the oldest entry beyond max', async () => {
+    const counter = countingLookup();
+    const store = memoized({ max: 2 });
+    await store.app({ id: '1' });
+    await store.app({ id: '2' });
+    await store.app({ id: '3' }); // evicts id 1
+    await store.app({ id: '2' }); // still cached
+    expect(counter.lookups).to.equal(3);
+    await store.app({ id: '1' });
+    expect(counter.lookups).to.equal(4);
+  });
+});
+
 describe('memoized: API shape', () => {
   it('exposes `constants` like the main export (and keeps top-level constants)', () => {
     const { constants } = require('../dist/cjs');

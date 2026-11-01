@@ -18,6 +18,25 @@
 - fix(proxy): honor lowercase `https_proxy` / `http_proxy`.
 - fix(ui): bind the test harness to 127.0.0.1; it exposed proxy credentials and proxy reconfiguration to the local network.
 - test(similar): convert the never-run `similar.spec.ts` to JS so it runs in the suite.
+- fix(proxy): proxied requests failed on Node 26 (`fetch failed: invalid onError method`) because undici's `ProxyAgent` was handed to Node's built-in fetch; proxied requests now use undici's own `fetch`.
+- feat: export `HttpError`, `NotFoundError` and `ValidationError` from the package root so callers can use `instanceof`.
+- fix(privacy, versionHistory, ratings): an unknown app id now throws `NotFoundError` instead of `HttpError` 404.
+- fix(developer): throw `NotFoundError` (still an `Error`, same message) when the developer has no apps.
+- fix(proxy): calls without `country` (`search`, `suggest`, `similar`) now route every request through the `us` storefront's proxy; previously the first request went direct and the follow-up lookup used the US proxy.
+- feat(types): `memoized()` is fully typed (was `any`); `privacy()` returns `PrivacyDetails`, `reviews()` returns `Review[]`, `ratings()` returns `Ratings`; `search()`/`list()` narrow on `idsOnly`/`fullDetail`; method option types and `RequestOptions` are exported.
+- BREAKING (types only): `requestOptions` is typed as `RequestOptions` instead of `any`, so unknown keys are now compile errors.
+- chore: `engines.node` is `>=20.18.1` (cheerio 1.2 already required it); CI runs Node 20, 22, 24 and 26; mocha 12; license field corrected to MIT to match `LICENSE`.
+- fix(app): the screenshot fallback now reads Apple's catalog API (`screenshotsByType`, grouped by device, exact sizes) instead of regex-scraping the apps.apple.com HTML, which could put iPad shots in the iPhone list and pick up unrelated images.
+- fix(http): `requestOptions.headers` now override the headers the library sets (case-insensitive), as documented and as upstream does.
+- fix(http): retries run in a loop instead of recursion, so each attempt's timeout timer is cleared and its usage event emitted before the next attempt, in order; retries now also respect `throttle`.
+- fix(http): `throttle` spaces requests `1000 / throttle` ms apart (fractional values like `0.5` now work) and no longer leaves a `setInterval` running per distinct value. Bursts of N requests at once are no longer allowed.
+- perf(similar): resolve `appId` with a plain lookup instead of a full `app()` call; an unknown `appId` throws `NotFoundError`.
+- test: retry policy (429/5xx, `Retry-After` seconds and date, no retry on 404, exhaustion, `timeoutMs`), throttle spacing, input validation for every method, memoized expiry/eviction, and a live integration test per endpoint (`INTEGRATION=1`).
+- chore: coverage only counts `dist/cjs` (stale build output made local runs fail), `.nyc_output/` is no longer committed, and thresholds were raised to the current level.
+
+## 0.3.0 - 2026-02-05
+
+- fix(app): drop placeholder images and promotional "features" artwork from screenshot lists (published to npm as 0.3.0; the git tag for this commit is `v0.2.1`).
 
 ## 0.2.0 - 2025-09-28
 

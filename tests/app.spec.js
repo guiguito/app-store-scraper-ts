@@ -92,7 +92,7 @@ describe('M1: app + ratings', () => {
     }
   });
 
-  it('app: falls back to web screenshots when API returns none', async () => {
+  it('app: falls back to catalog screenshots when lookup returns none', async () => {
     const lookupBody = JSON.stringify({
       results: [
         {
@@ -113,26 +113,36 @@ describe('M1: app + ratings', () => {
       ],
     });
 
-    const fallbackHtml = `
-      <html><body>
-      https://is1-ssl.mzstatic.com/image/thumb/Purple116/v4/aa/bb/cc/iphone-1/1242x2688bb.jpg
-      https://is2-ssl.mzstatic.com/image/thumb/Purple126/v4/dd/ee/ff/ipad-1/2048x2732bb.jpg
-      </body></html>
-    `;
+    // Shape of the catalog's screenshotsByType (real keys); iPhone has two types, the larger one wins.
+    const shot = (name, width, height) => ({ url: `https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/aa/${name}.png/{w}x{h}{c}.{f}`, width, height });
+    const catalog = JSON.stringify({ data: [ { attributes: { platformAttributes: {
+      ios: { screenshotsByType: { iphone_6_5: [shot('p1', 1242, 2688)], iphone_d74: [shot('p2', 1290, 2796)], ipadPro_2018: [shot('t1', 2048, 2732)], cassatt: [shot('x', 1, 1)] } },
+      appletvos: { screenshotsByType: { appleTV: [shot('tv1', 1920, 1080)] } },
+    } } } ] });
 
+    const urls = [];
     __setFetchForTests(
       mockFetch((url) => {
+        urls.push(url);
         if (url.startsWith('https://itunes.apple.com/lookup')) return { body: lookupBody };
-        if (url.startsWith('https://apps.apple.com')) return { body: fallbackHtml };
+        if (url.startsWith('https://apps.apple.com/api/apps/v1/catalog/')) return { body: catalog };
         return { status: 404, body: '' };
       }),
     );
 
     const result = await app({ id: '553834731' });
-    expect(result.screenshots).to.have.length(1);
-    expect(result.screenshots[0]).to.include('1242x2688');
-    expect(result.ipadScreenshots).to.have.length(1);
-    expect(result.ipadScreenshots[0]).to.include('2048x2732');
+    expect(urls[1]).to.include('extend=screenshotsByType');
+    expect(result.screenshots).to.deep.equal(['https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/aa/p2.png/1290x2796bb.jpg']);
+    expect(result.ipadScreenshots).to.deep.equal(['https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/aa/t1.png/2048x2732bb.jpg']);
+    expect(result.appletvScreenshots).to.have.length(1);
+  });
+
+  it('app: keeps lookup data when the screenshot fallback fails', async () => {
+    const lookupBody = JSON.stringify({ results: [ { trackId: 1, trackName: 'One', screenshotUrls: [] } ] });
+    __setFetchForTests(mockFetch((url) => (url.startsWith('https://itunes.apple.com/lookup') ? { body: lookupBody } : { status: 403, body: '' })));
+    const result = await app({ id: '1' });
+    expect(result.title).to.equal('One');
+    expect(result.screenshots).to.deep.equal([]);
   });
 
   it('ratings: parses totals and histogram', async () => {
@@ -161,12 +171,12 @@ describe('app: side effects and extra requests', () => {
 
   const lookupBody = JSON.stringify({ results: [ { trackId: 553834731, bundleId: 'com.king.candy', trackName: 'Candy', screenshotUrls: ['https://img/s1.png'], ipadScreenshotUrls: [] } ] });
 
-  it('does not scrape the web page when only iPad screenshots are missing (iPhone-only app)', async () => {
+  it('does not fetch fallback screenshots when only iPad screenshots are missing (iPhone-only app)', async () => {
     const urls = [];
     __setFetchForTests(mockFetch((url) => { urls.push(url); return url.startsWith('https://itunes.apple.com/lookup') ? { body: lookupBody } : { status: 404, body: '' }; }));
     const result = await app({ id: '553834731' });
     expect(result.screenshots).to.deep.equal(['https://img/s1.png']);
-    expect(urls.filter((u) => u.startsWith('https://apps.apple.com'))).to.have.length(0);
+    expect(urls).to.have.length(1);
   });
 
   it('does not mutate the caller options when resolving ratings by appId', async () => {

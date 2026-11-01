@@ -11,7 +11,8 @@ module.exports = [
       'dist/**',
       'coverage/**',
       'reference/**',
-      'doc/**',
+      'docs/**',
+      '.nyc_output/**',
       'ui-test/**',
       'node_modules/**',
       'eslint.config.cjs',
@@ -49,6 +50,7 @@ module.exports = [
       'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
       'no-empty': 'off',
+      'no-redeclare': 'off', // tsc already rejects real redeclarations; this rule flags overloads
       'no-useless-escape': 'off',
     },
   },
