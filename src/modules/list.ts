@@ -29,9 +29,8 @@ function cleanApp(app: AppleJson): AppLite {
     description: app.summary ? app.summary.label : undefined,
     developer: app['im:artist']?.label,
     developerUrl: app['im:artist']?.attributes?.href,
-    developerId: app['im:artist']?.attributes?.href?.includes('/id')
-      ? app['im:artist']?.attributes?.href?.split('/id')[1]?.split('?mt')[0]
-      : undefined,
+    // Digits after /id: the feed's query string varies (?mt=8&uo=2, ?uo=2) and must not leak into the id.
+    developerId: app['im:artist']?.attributes?.href?.match(/\/id(\d+)/)?.[1],
     genre: app.category?.attributes?.label,
     genreId: app.category?.attributes?.['im:id'],
     released: app['im:releaseDate']?.label,
