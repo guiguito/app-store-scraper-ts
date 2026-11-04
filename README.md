@@ -274,7 +274,7 @@ finance.length; // 200: ranks 1–100 from RSS, 101–200 from the chart page
 - **Ranks 101–200 come from `lookup`:** `icon` is the 512 px artwork (RSS gives 100 px), `description` is the full text, and `genre` is the primary genre. Ids are strings, like the RSS entries'.
 - **App bundles are skipped,** as in RSS, so a paid chart can return a few fewer than 200 apps.
 - **Paid charts:** the website still ranks some apps that recently went free, which RSS leaves out. Within ranks 1–100 those are skipped so the RSS ranks stay intact; past 100 they're kept, as on the App Store.
-- **Freshness:** Apple's CDN caches the page for up to 15 minutes.
+- **Freshness:** Apple's CDN caches the page for up to 15 minutes. When Apple refreshes a chart, the page can update a few minutes before RSS, and until RSS catches up `list()` returns 100. Seen once in 2 hours of sampling: US Finance, under 10 minutes. If you asked for 200 and got exactly 100, retry about 10 minutes later.
 - **Risk:** this is a web page, not an API, and Apple can change it without notice. If it does, you get 100 apps again rather than errors. The weekly live test (`tests/integration/live.spec.js`) checks it.
 
 Checked on November 4, 2026, against RSS:
