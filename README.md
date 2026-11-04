@@ -12,6 +12,7 @@ Reference: API/field parity with the original library where possible: https://gi
 - Optional real App Store subtitles (`subtitle: true`), which Apple's lookup API doesn't return.
 - In-app purchases with numeric prices, currency and subscription periods (`inAppPurchases()`).
 - Cancellable calls via a standard `AbortSignal` (`requestOptions.signal`).
+- Top charts to rank 200 for iPhone top free and top paid (`list({ num: 200 })`), past the RSS feed's cap of 100.
 - CommonJS output usable from both `require` and `import`; Node 20.18+ fetch-based.
 - Unit tests against a stubbed `fetch` (no network); optional live integration tests.
 
@@ -168,7 +169,7 @@ const results = await search({ term: 'language', num: 20, subtitle: true }); // 
 
 What to know:
 - **Do not use the first line of `description` as a subtitle.** It's a different text, usually a long sentence.
-- **Cost:** one extra request to Apple's catalog API (`apps.apple.com/api/apps/v1/catalog`) per 99 apps returned. `app()` and `search({ num: 50 })` each make 1 more request; `list({ num: 200, fullDetail: true })` makes 3 more (99 + 99 + 2). That's why it's opt-in: more requests means more chance of Apple rate-limiting you (HTTP 403/429).
+- **Cost:** one extra request to Apple's catalog API (`apps.apple.com/api/apps/v1/catalog`) per 99 apps returned. `app()` and `search({ num: 50 })` each make 1 more request; `list({ num: 100, fullDetail: true })` makes 2 more (99 + 1). That's why it's opt-in: more requests means more chance of Apple rate-limiting you (HTTP 403/429).
 - **Country-specific:** the subtitle comes from the `country` storefront, in that storefront's language (Duolingo in `fr` is "Anglais, échecs et plus"). `lang` does not change it.
 - **May be missing:** `subtitle` stays `undefined` when the app has none, or when the catalog request fails. A failed subtitle request never fails the call; you still get the apps.
 - **Platform:** the iOS subtitle, or the Mac one for Mac-only apps.
@@ -245,7 +246,7 @@ Parameters
 - `category` (constants.category): Optional category filter (e.g., `GAMES`, `BUSINESS`, `GAMES_ACTION`).
 - `country` (string): Default `us`.
 - `lang` (string): Optional, forwarded to lookup when `fullDetail`.
-- `num` (number): Number of items (default 50, max 200).
+- `num` (number): Number of apps (default 50, max 200). Apple's RSS feed stops at 100. Above 100, iPhone top free and top paid charts also get ranks 101–200 from the App Store website; everything else stays at 100. See [Ranks past 100](#ranks-past-100) below.
 - `fullDetail` (boolean): When true, resolves summary entries via lookup to return full `App` objects.
 - `subtitle` (boolean): Also fetch each app's App Store subtitle into `subtitle` (only with `fullDetail: true`; default `false`; one extra request per 99 apps). See [App subtitles](#app-subtitles).
 - `requestOptions` (object): HTTP overrides.
@@ -256,6 +257,30 @@ Returns
 
 Errors
 - `ValidationError` on invalid `collection` or `category`, or when `num > 200`.
+
+#### Ranks past 100
+
+Apple's RSS feed, which `list()` reads, returns at most 100 apps whatever `num` asks for. The App Store website's chart page (`https://apps.apple.com/{country}/iphone/charts/{genreId}`) ranks 200, so with `num` above 100 `list()` reads both:
+
+```js
+const finance = await list({ collection: constants.collection.TOP_FREE_IOS, category: constants.category.FINANCE, country: 'fr', num: 200 });
+finance.length; // 200: ranks 1–100 from RSS, 101–200 from the chart page
+```
+
+- **Which charts:** `TOP_FREE_IOS` with any `category`, or none (the "All Apps" chart), and `TOP_PAID_IOS` with a `category`. Everything else stays at 100: top grossing, new, iPad and Mac collections, and `TOP_PAID_IOS` without a category (RSS mixes games into that chart and the website doesn't).
+- **Ranks 1–100 are always RSS's.** The page's ranks are used only if the page lists RSS's apps in the same order. Otherwise you get RSS's 100 and no error.
+- **Fails safely:** if the page can't be fetched, has changed shape, or disagrees with RSS, `list()` returns RSS's 100 apps without throwing. Cancelling with `requestOptions.signal` still rejects.
+- **Cost:** the page and RSS are fetched in parallel (the page is about 550 KB). Without `fullDetail`, one more `lookup` request fills in ranks 101–200; with `fullDetail`, a single `lookup` covers all 200.
+- **Ranks 101–200 come from `lookup`:** `icon` is the 512 px artwork (RSS gives 100 px), `description` is the full text, and `genre` is the primary genre. Ids are strings, like the RSS entries'.
+- **App bundles are skipped,** as in RSS, so a paid chart can return a few fewer than 200 apps.
+- **Paid charts:** the website still ranks some apps that recently went free, which RSS leaves out. Within ranks 1–100 those are skipped so the RSS ranks stay intact; past 100 they're kept, as on the App Store.
+- **Freshness:** Apple's CDN caches the page for up to 15 minutes.
+- **Risk:** this is a web page, not an API, and Apple can change it without notice. If it does, you get 100 apps again rather than errors. The weekly live test (`tests/integration/live.spec.js`) checks it.
+
+Checked on November 4, 2026, against RSS:
+- **Free charts:** every non-empty iPhone chart (all 70 categories in the US, Finance and "All Apps" in 10 other storefronts including JP, KR, CN, SA and RU) matched RSS position by position for the whole top 100.
+- **Paid charts with a category:** each matched once app bundles and the recently-free apps above were set aside.
+- **Ranks 101–200:** no duplicates, and `lookup` resolved every id.
 
 ### search
 Search for apps by term.
