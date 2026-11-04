@@ -1,5 +1,7 @@
 ## Unreleased
 
+- fix(list): `developerId` no longer includes the feed's query string (`?uo=2`), only the numeric id.
+- feat(list): `num` above 100 now returns ranks 101–200 for iPhone top free (any category or none) and top paid (with a category). Apple's RSS feed stops at 100, so `list()` also reads the App Store website's chart page. Ranks 1–100 stay RSS's. The page's ranks are used only if the page agrees with RSS, and any page failure returns the 100 RSS apps without throwing. Other collections are unchanged. See "Ranks past 100" in the README.
 - fix(types): `RequestOptions.body` is typed as a fetch body (`RequestInit['body']`) instead of `any`, and the exported `BaseOptions.requestOptions` is now the full `RequestOptions`.
 - chore: lint is warning-free. Undici's proxy types replace `any`; Apple's undocumented payloads use one documented `AppleJson` type.
 

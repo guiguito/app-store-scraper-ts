@@ -48,6 +48,16 @@ describe('Integration (live Apple endpoints)', function () {
     expect(apps[0]).to.have.property('appId');
   });
 
+  it('list past 100 (apps.apple.com chart page)', async () => {
+    // list() keeps the page's ranks only if they agree with RSS's top 100, so more than 100 apps here
+    // means the page still parses and still matches RSS. 100 means it fell back: check the page.
+    const apps = await store.list({ category: store.constants.category.FINANCE, num: 200 });
+    const ids = apps.map((a) => a.id);
+    expect(ids.length).to.be.greaterThan(150);
+    expect(new Set(ids).size).to.equal(ids.length);
+    expect(apps[150].title).to.be.a('string').and.not.empty;
+  });
+
   it('search', async () => {
     const apps = await store.search({ term: 'candy crush', num: 3 });
     expect(apps).to.not.be.empty;
